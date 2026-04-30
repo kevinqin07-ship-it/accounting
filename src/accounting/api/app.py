@@ -9,6 +9,7 @@ from accounting.api.routers import (
     accounts,
     auth,
     bills,
+    dashboard,
     invoices,
     journal,
     notifications,
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(reports.router)
     app.include_router(period_close.router)
     app.include_router(notifications.router)
+    app.include_router(dashboard.router)
 
     @app.get("/healthz", tags=["meta"])
     def healthz() -> dict[str, str]:

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Logistics Accounting{% endblock %}
+{% block body %}
+<header>
+  <h1>Logistics Accounting</h1>
+  <div>
+    <span style="margin-right:16px;color:#9ca3af;font-size:13px">{{ snapshot.as_of }} · {{ principal.name }} ({{ principal.role.value }})</span>
+    <a href="/logout">Sign out</a>
+  </div>
+</header>
+<main>
+  <div class="grid grid-3" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Operating cash</h2>
+      <div class="metric {% if snapshot.cash_cents < 0 %}neg{% endif %}">{{ fmt(snapshot.cash_cents) }}</div>
+      <div class="sub">As of {{ snapshot.as_of }}</div>
+    </div>
+    <div class="card">
+      <h2>Accounts receivable</h2>
+      <div class="metric">{{ fmt(snapshot.ar_cents) }}</div>
+      <div class="sub">
+        {% if snapshot.ar_overdue_cents > 0 %}
+          <span class="pill warn">{{ fmt(snapshot.ar_overdue_cents) }} past due</span>
+        {% else %}
+          <span class="pill ok">All current</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Accounts payable</h2>
+      <div class="metric">{{ fmt(snapshot.ap_cents) }}</div>
+      <div class="sub">Owed to vendors</div>
+    </div>
+  </div>
+
+  <div class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Year-to-date P&L</h2>
+      <table>
+        <tr><td>Revenue</td><td class="num">{{ fmt(snapshot.revenue_ytd_cents) }}</td></tr>
+        <tr><td>Expenses</td><td class="num">{{ fmt(snapshot.expense_ytd_cents) }}</td></tr>
+        <tr>
+          <td><strong>Net income</strong></td>
+          <td class="num"><strong class="{% if snapshot.net_income_ytd_cents < 0 %}neg{% else %}pos{% endif %}">{{ fmt(snapshot.net_income_ytd_cents) }}</strong></td>
+        </tr>
+      </table>
+      <div class="sub" style="margin-top:8px">{{ snapshot.ytd_start }} → {{ snapshot.as_of }}</div>
+    </div>
+    <div class="card">
+      <h2>AR aging buckets</h2>
+      <table>
+        {% for label, cents in snapshot.aging_buckets.items() %}
+        <tr>
+          <td>{{ label }}</td>
+          <td class="num">{{ fmt(cents) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>Recent shipments</h2>
+    {% if snapshot.recent_shipments %}
+    <table>
+      <tr>
+        <th>Shipment</th><th>Customer</th><th>Lane</th>
+        <th class="num">Revenue</th><th class="num">Cost</th><th class="num">Margin</th>
+      </tr>
+      {% for row in snapshot.recent_shipments %}
+      <tr>
+        <td>{{ row.shipment_no }}</td>
+        <td>{{ row.customer_name }}</td>
+        <td>{{ row.origin }} → {{ row.destination }}</td>
+        <td class="num">{{ fmt(row.revenue_cents) }}</td>
+        <td class="num">{{ fmt(row.cost_cents) }}</td>
+        <td class="num {% if row.margin_cents < 0 %}neg{% else %}pos{% endif %}">{{ fmt(row.margin_cents) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="sub">No shipments yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h2>Books status</h2>
+      {% if snapshot.closed_through %}
+      <div class="metric" style="font-size:18px">Closed through {{ snapshot.closed_through }}</div>
+      {% else %}
+      <div class="sub">No period has been closed.</div>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h2>Bank reconciliation</h2>
+      <div>
+        <strong>{{ snapshot.open_reconciliations }}</strong> open
+        {% if snapshot.last_reconciliation_finalized %}
+        · last finalized {{ snapshot.last_reconciliation_finalized }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

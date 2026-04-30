@@ -15,7 +15,9 @@ dependencies = [
     "alembic>=1.13",
     "click>=8.1",
     "fastapi>=0.111",
+    "jinja2>=3.1",
     "pydantic>=2.6",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.27",
 ]
 
@@ -28,6 +30,9 @@ accounting-api = "accounting.api.app:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"accounting.api" = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -3,6 +3,7 @@
 from accounting.services import (
     bank_rec,
     billing,
+    dashboard,
     fuel_import,
     invoicing,
     ledger,
@@ -18,6 +19,7 @@ from accounting.services import (
 __all__ = [
     "bank_rec",
     "billing",
+    "dashboard",
     "fuel_import",
     "invoicing",
     "ledger",

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Logistics Accounting{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <h2 style="margin-top:0">Sign in</h2>
+  <p class="sub">Paste your API key to access the dashboard.</p>
+  <form method="post" action="/login">
+    <input type="password" name="key" placeholder="API key" autocomplete="off" autofocus>
+    <button type="submit">Sign in</button>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  </form>
+</div>
+{% endblock %}

@@ -18,6 +18,8 @@ from accounting.services.invoicing import InvoiceLineInput
 
 
 def seed() -> None:
+    """Reset the database and load demo data. Destroys ALL existing data,
+    including API keys; create keys after running seed, not before."""
     reset_db()
     today = date.today()
     with Session() as session:
