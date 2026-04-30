@@ -62,8 +62,26 @@ def post_entry(
     memo: str,
     lines: Iterable[LineSpec],
     reference: Optional[str] = None,
+    _allow_locked: bool = False,
 ) -> JournalEntry:
-    """Create and persist a balanced journal entry. Raises if unbalanced."""
+    """Create and persist a balanced journal entry. Raises if unbalanced or
+    if the entry date falls inside a closed period.
+
+    `_allow_locked` is an internal bypass for the closing journal entry
+    itself (which is dated on the close-through day); ordinary callers must
+    not set it.
+    """
+    if not _allow_locked:
+        # Imported lazily to avoid a circular import: period_close depends on
+        # ledger.
+        from accounting.services import period_close
+
+        if period_close.is_locked(session, entry_date):
+            cutoff = period_close.closed_through(session)
+            raise ValueError(
+                f"Cannot post entry dated {entry_date}: books are closed through {cutoff}."
+            )
+
     entry = JournalEntry(entry_date=entry_date, memo=memo, reference=reference)
     for spec in lines:
         account = get_account(session, spec.account_code)
@@ -114,11 +132,17 @@ def trial_balance(session: Session, as_of: Optional[date] = None) -> list[tuple[
             c += line.credit_cents
         if d == 0 and c == 0:
             continue
-        # Net to one side based on the account's normal side.
+        # Net to one side based on the account's normal side. A non-zero raw
+        # debit and credit can still net to zero (e.g. a P&L account after
+        # a period close); skip those too.
         if NORMAL_SIDE_FOR[account.type] == NormalSide.DEBIT:
             net = d - c
-            rows.append((account, max(net, 0), max(-net, 0)))
         else:
             net = c - d
+        if net == 0:
+            continue
+        if NORMAL_SIDE_FOR[account.type] == NormalSide.DEBIT:
+            rows.append((account, max(net, 0), max(-net, 0)))
+        else:
             rows.append((account, max(-net, 0), max(net, 0)))
     return rows

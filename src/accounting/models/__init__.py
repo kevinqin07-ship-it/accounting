@@ -21,6 +21,7 @@ from accounting.models.bank import (
     Reconciliation,
     ReconciliationStatus,
 )
+from accounting.models.period_close import PeriodClose
 
 __all__ = [
     "Account",
@@ -50,4 +51,5 @@ __all__ = [
     "BankStatementLine",
     "Reconciliation",
     "ReconciliationStatus",
+    "PeriodClose",
 ]

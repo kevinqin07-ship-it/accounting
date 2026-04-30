@@ -10,7 +10,14 @@ from sqlalchemy import select
 from accounting.db import Session, init_db
 from accounting.money import fmt
 from accounting.models import Account, Bill, Invoice, Reconciliation, Shipment, Vendor
-from accounting.services import bank_rec, fuel_import, ledger, reports, shipments as ship_svc
+from accounting.services import (
+    bank_rec,
+    fuel_import,
+    ledger,
+    period_close,
+    reports,
+    shipments as ship_svc,
+)
 from accounting.services.reports import shipment_pnl
 
 
@@ -330,6 +337,39 @@ def bank_rec_finalize_cmd(rec_id: int) -> None:
         except ValueError as e:
             raise click.ClickException(str(e))
         click.echo(f"Reconciliation #{rec.id} finalized.")
+
+
+@cli.command("close")
+@click.option("--through", "through", required=True, help="YYYY-MM-DD")
+@click.option("--retained-earnings", default="3100", help="Retained-earnings account code.")
+@click.option("--note", default=None)
+def close_cmd(through: str, retained_earnings: str, note: str | None) -> None:
+    """Close revenue and expense activity through the given date into retained earnings."""
+    cutoff = _parse_date(through)
+    with Session() as session:
+        try:
+            rec = period_close.close_period(
+                session,
+                close_through=cutoff,
+                retained_earnings_code=retained_earnings,
+                note=note,
+            )
+        except (ValueError, LookupError) as e:
+            raise click.ClickException(str(e))
+        click.echo(
+            f"Closed through {rec.close_through_date} (closing JE #{rec.closing_journal_entry_id})."
+        )
+
+
+@cli.command("close-status")
+def close_status_cmd() -> None:
+    """Show the most recent close, if any."""
+    with Session() as session:
+        cutoff = period_close.closed_through(session)
+        if cutoff is None:
+            click.echo("Books are open (no period has been closed).")
+        else:
+            click.echo(f"Books are closed through {cutoff}.")
 
 
 if __name__ == "__main__":
