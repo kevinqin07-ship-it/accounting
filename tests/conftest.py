@@ -35,9 +35,42 @@ def session(tmp_path: Path, monkeypatch):
 
 
 @pytest.fixture
-def client(session):
-    """A FastAPI TestClient wired to the same database as the `session`
-    fixture. Tests can call HTTP endpoints and verify state with `session`."""
+def admin_key(session) -> str:
+    """Create an admin API key in the test database and return the raw token."""
+    from accounting.models import ApiKeyRole
+    from accounting.services import auth as auth_svc
+
+    issued = auth_svc.create_key(session, name="test-admin", role=ApiKeyRole.ADMIN)
+    session.commit()
+    return issued.raw_key
+
+
+@pytest.fixture
+def readonly_key(session) -> str:
+    from accounting.models import ApiKeyRole
+    from accounting.services import auth as auth_svc
+
+    issued = auth_svc.create_key(session, name="test-ro", role=ApiKeyRole.READONLY)
+    session.commit()
+    return issued.raw_key
+
+
+@pytest.fixture
+def client(session, admin_key):
+    """A FastAPI TestClient pre-authenticated as admin against the same
+    database the `session` fixture uses. Tests that need to verify auth
+    behavior should use `unauthed_client`."""
+    from fastapi.testclient import TestClient
+    from accounting.api.app import create_app
+
+    c = TestClient(create_app())
+    c.headers["Authorization"] = f"Bearer {admin_key}"
+    return c
+
+
+@pytest.fixture
+def unauthed_client(session):
+    """A FastAPI TestClient with no auth header set."""
     from fastapi.testclient import TestClient
     from accounting.api.app import create_app
 

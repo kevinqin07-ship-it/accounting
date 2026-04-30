@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
 from accounting.api.schemas import JournalEntryIn, JournalEntryOut
+from accounting.api.security import admin_required, read_required
 from accounting.models import JournalEntry
 from accounting.money import to_cents
 from accounting.services import ledger
 from accounting.services.ledger import LineSpec
 
-router = APIRouter(prefix="/journal-entries", tags=["journal"])
+router = APIRouter(
+    prefix="/journal-entries", tags=["journal"], dependencies=[Depends(read_required)]
+)
 
 
 @router.get("", response_model=List[JournalEntryOut])
@@ -27,7 +30,12 @@ def list_entries(
     return [JournalEntryOut.from_model(e) for e in rows]
 
 
-@router.post("", response_model=JournalEntryOut, status_code=201)
+@router.post(
+    "",
+    response_model=JournalEntryOut,
+    status_code=201,
+    dependencies=[Depends(admin_required)],
+)
 def post_entry(
     payload: JournalEntryIn, session: Session = Depends(get_session)
 ) -> JournalEntryOut:

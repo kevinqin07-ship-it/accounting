@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
+from accounting.api.security import read_required
 from accounting.api.schemas import (
     AgingRowOut,
     BalanceSheetOut,
@@ -21,7 +22,9 @@ from accounting.models import Shipment
 from accounting.money import from_cents
 from accounting.services import ledger, reports
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+router = APIRouter(
+    prefix="/reports", tags=["reports"], dependencies=[Depends(read_required)]
+)
 
 
 @router.get("/trial-balance", response_model=TrialBalanceOut)

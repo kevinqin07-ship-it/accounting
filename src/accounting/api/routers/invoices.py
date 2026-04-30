@@ -7,11 +7,14 @@ from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
 from accounting.api.schemas import InvoiceCreate, InvoiceOut
+from accounting.api.security import read_required, write_required
 from accounting.models import Customer, Invoice, Shipment
 from accounting.services import invoicing
 from accounting.services.invoicing import InvoiceLineInput
 
-router = APIRouter(prefix="/invoices", tags=["invoices"])
+router = APIRouter(
+    prefix="/invoices", tags=["invoices"], dependencies=[Depends(read_required)]
+)
 
 
 def _get_invoice(session: Session, invoice_id: int) -> Invoice:
@@ -31,7 +34,12 @@ def list_invoices(session: Session = Depends(get_session)) -> List[InvoiceOut]:
     ]
 
 
-@router.post("", response_model=InvoiceOut, status_code=201)
+@router.post(
+    "",
+    response_model=InvoiceOut,
+    status_code=201,
+    dependencies=[Depends(write_required)],
+)
 def create_invoice(
     payload: InvoiceCreate, session: Session = Depends(get_session)
 ) -> InvoiceOut:
@@ -71,7 +79,11 @@ def get_invoice(invoice_id: int, session: Session = Depends(get_session)) -> Inv
     return InvoiceOut.from_model(_get_invoice(session, invoice_id))
 
 
-@router.post("/{invoice_id}/issue", response_model=InvoiceOut)
+@router.post(
+    "/{invoice_id}/issue",
+    response_model=InvoiceOut,
+    dependencies=[Depends(write_required)],
+)
 def issue_invoice(invoice_id: int, session: Session = Depends(get_session)) -> InvoiceOut:
     inv = _get_invoice(session, invoice_id)
     invoicing.issue_invoice(session, inv)

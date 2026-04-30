@@ -22,6 +22,7 @@ from accounting.models.bank import (
     ReconciliationStatus,
 )
 from accounting.models.period_close import PeriodClose
+from accounting.models.auth import ApiKey, ApiKeyRole
 
 __all__ = [
     "Account",
@@ -52,4 +53,6 @@ __all__ = [
     "Reconciliation",
     "ReconciliationStatus",
     "PeriodClose",
+    "ApiKey",
+    "ApiKeyRole",
 ]

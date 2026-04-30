@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
 from accounting.api.schemas import BillCreate, BillOut
+from accounting.api.security import read_required, write_required
 from accounting.models import Bill, Shipment, Vendor
 from accounting.services import billing
 from accounting.services.billing import BillLineInput
 
-router = APIRouter(prefix="/bills", tags=["bills"])
+router = APIRouter(
+    prefix="/bills", tags=["bills"], dependencies=[Depends(read_required)]
+)
 
 
 def _get_bill(session: Session, bill_id: int) -> Bill:
@@ -27,7 +30,12 @@ def list_bills(session: Session = Depends(get_session)) -> List[BillOut]:
     return [BillOut.from_model(b) for b in session.scalars(select(Bill).order_by(Bill.id))]
 
 
-@router.post("", response_model=BillOut, status_code=201)
+@router.post(
+    "",
+    response_model=BillOut,
+    status_code=201,
+    dependencies=[Depends(write_required)],
+)
 def create_bill(
     payload: BillCreate, session: Session = Depends(get_session)
 ) -> BillOut:
@@ -67,7 +75,11 @@ def get_bill(bill_id: int, session: Session = Depends(get_session)) -> BillOut:
     return BillOut.from_model(_get_bill(session, bill_id))
 
 
-@router.post("/{bill_id}/approve", response_model=BillOut)
+@router.post(
+    "/{bill_id}/approve",
+    response_model=BillOut,
+    dependencies=[Depends(write_required)],
+)
 def approve_bill(bill_id: int, session: Session = Depends(get_session)) -> BillOut:
     bill = _get_bill(session, bill_id)
     billing.approve_bill(session, bill)

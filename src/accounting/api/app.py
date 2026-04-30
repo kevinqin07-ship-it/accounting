@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from accounting.api.routers import (
     accounts,
+    auth,
     bills,
     invoices,
     journal,
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     async def _bad_request(_: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
+    app.include_router(auth.router)
     app.include_router(accounts.router)
     app.include_router(parties.customers_router)
     app.include_router(parties.vendors_router)

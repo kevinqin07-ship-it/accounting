@@ -13,11 +13,16 @@ from accounting.api.schemas import (
     VendorCreate,
     VendorOut,
 )
+from accounting.api.security import read_required, write_required
 from accounting.models import Customer, Vendor
 from accounting.services import parties as parties_svc
 
-customers_router = APIRouter(prefix="/customers", tags=["customers"])
-vendors_router = APIRouter(prefix="/vendors", tags=["vendors"])
+customers_router = APIRouter(
+    prefix="/customers", tags=["customers"], dependencies=[Depends(read_required)]
+)
+vendors_router = APIRouter(
+    prefix="/vendors", tags=["vendors"], dependencies=[Depends(read_required)]
+)
 
 
 @customers_router.get("", response_model=List[CustomerOut])
@@ -25,7 +30,12 @@ def list_customers(session: Session = Depends(get_session)) -> List[Customer]:
     return list(session.scalars(select(Customer).order_by(Customer.code)))
 
 
-@customers_router.post("", response_model=CustomerOut, status_code=201)
+@customers_router.post(
+    "",
+    response_model=CustomerOut,
+    status_code=201,
+    dependencies=[Depends(write_required)],
+)
 def create_customer(
     payload: CustomerCreate, session: Session = Depends(get_session)
 ) -> Customer:
@@ -45,7 +55,12 @@ def list_vendors(session: Session = Depends(get_session)) -> List[Vendor]:
     return list(session.scalars(select(Vendor).order_by(Vendor.code)))
 
 
-@vendors_router.post("", response_model=VendorOut, status_code=201)
+@vendors_router.post(
+    "",
+    response_model=VendorOut,
+    status_code=201,
+    dependencies=[Depends(write_required)],
+)
 def create_vendor(
     payload: VendorCreate, session: Session = Depends(get_session)
 ) -> Vendor:

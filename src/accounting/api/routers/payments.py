@@ -5,10 +5,13 @@ from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
 from accounting.api.schemas import PaymentOut, PaymentReceiveIn, PaymentSendIn
+from accounting.api.security import write_required
 from accounting.models import Bill, Invoice
 from accounting.services import payments as payments_svc
 
-router = APIRouter(prefix="/payments", tags=["payments"])
+router = APIRouter(
+    prefix="/payments", tags=["payments"], dependencies=[Depends(write_required)]
+)
 
 
 @router.post("/receive", response_model=PaymentOut, status_code=201)

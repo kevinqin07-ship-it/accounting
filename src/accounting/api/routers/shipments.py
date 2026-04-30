@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 from accounting.api.deps import get_session
 from accounting.api.schemas import ShipmentCreate, ShipmentOut
+from accounting.api.security import read_required, write_required
 from accounting.models import Shipment
 from accounting.services import shipments as shipments_svc
 
-router = APIRouter(prefix="/shipments", tags=["shipments"])
+router = APIRouter(
+    prefix="/shipments", tags=["shipments"], dependencies=[Depends(read_required)]
+)
 
 
 @router.get("", response_model=List[ShipmentOut])
@@ -22,7 +25,12 @@ def list_shipments(session: Session = Depends(get_session)) -> List[ShipmentOut]
     ]
 
 
-@router.post("", response_model=ShipmentOut, status_code=201)
+@router.post(
+    "",
+    response_model=ShipmentOut,
+    status_code=201,
+    dependencies=[Depends(write_required)],
+)
 def create_shipment(
     payload: ShipmentCreate, session: Session = Depends(get_session)
 ) -> ShipmentOut:
