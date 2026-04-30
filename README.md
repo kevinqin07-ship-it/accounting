@@ -35,6 +35,7 @@ src/accounting/
     payments.py           receive / send payments and clear AR / AP
     settlements.py        driver pay runs (employees + owner-operators) with deductions
     fuel_import.py        parse fuel-card CSV; create per-truck rolled-up vendor bill
+    bank_rec.py           bank-statement import, auto-match, finalize a reconciliation
     reports.py            income statement, balance sheet, AR/AP aging, shipment P&L
   cli.py                  Click-based command line
   seed.py                 demo dataset
@@ -54,6 +55,12 @@ accounting balance-sheet --as-of 2026-12-31
 accounting ar-aging
 accounting shipment-pnl SHP-1001
 accounting import-fuel PILOT statement.csv --bill-no PILOT-APR --issue-date 2026-04-30
+accounting import-bank 1000 chase-april.csv
+accounting bank-rec open 1000 --period-start 2026-04-01 --period-end 2026-04-30 \
+    --start-balance 10000 --end-balance 11920
+accounting bank-rec auto-match 1
+accounting bank-rec status 1
+accounting bank-rec finalize 1
 ```
 
 The default database is `sqlite:///accounting.db` in the working directory; override

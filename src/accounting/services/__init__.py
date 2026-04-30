@@ -1,6 +1,7 @@
 """Service-layer business logic. Importable as `accounting.services.<area>`."""
 
 from accounting.services import (
+    bank_rec,
     billing,
     fuel_import,
     invoicing,
@@ -13,6 +14,7 @@ from accounting.services import (
 )
 
 __all__ = [
+    "bank_rec",
     "billing",
     "fuel_import",
     "invoicing",

@@ -9,8 +9,8 @@ from sqlalchemy import select
 
 from accounting.db import Session, init_db
 from accounting.money import fmt
-from accounting.models import Account, Invoice, Bill, Shipment, Vendor
-from accounting.services import fuel_import, ledger, reports, shipments as ship_svc
+from accounting.models import Account, Bill, Invoice, Reconciliation, Shipment, Vendor
+from accounting.services import bank_rec, fuel_import, ledger, reports, shipments as ship_svc
 from accounting.services.reports import shipment_pnl
 
 
@@ -193,6 +193,109 @@ def import_fuel_cmd(vendor_code: str, csv_path: str, bill_no: str, issue_date: s
         click.echo(f"Bill {result.bill.bill_no}: {fmt(result.bill.total_cents)}")
         for truck, count in sorted(result.rows_per_truck.items()):
             click.echo(f"  {truck}: {count} txns")
+
+
+@cli.command("import-bank")
+@click.argument("cash_account_code")
+@click.argument("csv_path", type=click.Path(exists=True, dir_okay=False, readable=True))
+def import_bank_cmd(cash_account_code: str, csv_path: str) -> None:
+    """Import a bank-statement CSV for a cash account."""
+    with open(csv_path, "r", newline="") as fh:
+        rows = bank_rec.parse_csv(fh.read())
+    with Session() as session:
+        result = bank_rec.import_rows(
+            session, cash_account_code=cash_account_code, rows=rows
+        )
+    click.echo(
+        f"Imported {result.inserted} bank lines, skipped {result.skipped_duplicates} duplicates."
+    )
+
+
+@cli.group("bank-rec")
+def bank_rec_group() -> None:
+    """Bank reconciliation commands."""
+
+
+@bank_rec_group.command("open")
+@click.argument("cash_account_code")
+@click.option("--period-start", required=True, help="YYYY-MM-DD")
+@click.option("--period-end", required=True, help="YYYY-MM-DD")
+@click.option("--start-balance", required=True, type=float)
+@click.option("--end-balance", required=True, type=float)
+def bank_rec_open_cmd(
+    cash_account_code: str,
+    period_start: str,
+    period_end: str,
+    start_balance: float,
+    end_balance: float,
+) -> None:
+    """Open a reconciliation period."""
+    with Session() as session:
+        rec = bank_rec.open_period(
+            session,
+            cash_account_code=cash_account_code,
+            period_start=_parse_date(period_start),
+            period_end=_parse_date(period_end),
+            statement_start_balance=start_balance,
+            statement_end_balance=end_balance,
+        )
+        click.echo(f"Opened reconciliation #{rec.id} for {cash_account_code}.")
+
+
+@bank_rec_group.command("auto-match")
+@click.argument("rec_id", type=int)
+@click.option("--tolerance-days", type=int, default=5)
+def bank_rec_auto_match_cmd(rec_id: int, tolerance_days: int) -> None:
+    """Run auto-matching on an open reconciliation."""
+    with Session() as session:
+        rec = session.get(Reconciliation, rec_id)
+        if rec is None:
+            raise click.ClickException(f"Reconciliation {rec_id} not found.")
+        created = bank_rec.auto_match(session, rec, date_tolerance_days=tolerance_days)
+        click.echo(f"Created {created} matches.")
+
+
+@bank_rec_group.command("status")
+@click.argument("rec_id", type=int)
+def bank_rec_status_cmd(rec_id: int) -> None:
+    """Show the reconciliation summary."""
+    with Session() as session:
+        rec = session.get(Reconciliation, rec_id)
+        if rec is None:
+            raise click.ClickException(f"Reconciliation {rec_id} not found.")
+        s = bank_rec.summary(session, rec)
+        click.echo(
+            f"Reconciliation #{rec.id} ({rec.cash_account.code}) "
+            f"{rec.period_start}..{rec.period_end} [{rec.status.value}]"
+        )
+        click.echo(f"  Statement start balance:    {fmt(s.statement_start_balance_cents):>14}")
+        click.echo(f"  Opening book balance:       {fmt(s.opening_book_balance_cents):>14}")
+        click.echo(f"  Statement ending balance:   {fmt(s.statement_end_balance_cents):>14}")
+        click.echo(f"  Book balance at period end: {fmt(s.book_balance_cents):>14}")
+        click.echo(f"  - Outstanding deposits:     {fmt(s.outstanding_inflows_cents):>14}")
+        click.echo(f"  + Outstanding checks:       {fmt(s.outstanding_outflows_cents):>14}")
+        click.echo(f"  = Adjusted book balance:    {fmt(s.adjusted_book_balance_cents):>14}")
+        click.echo(f"  Opening difference:         {fmt(s.opening_difference_cents):>14}")
+        click.echo(f"  Ending difference:          {fmt(s.ending_difference_cents):>14}")
+        click.echo(
+            f"  Unmatched bank lines: {len(s.unmatched_bank_lines)}, "
+            f"unmatched book lines: {len(s.unmatched_book_lines)}"
+        )
+
+
+@bank_rec_group.command("finalize")
+@click.argument("rec_id", type=int)
+def bank_rec_finalize_cmd(rec_id: int) -> None:
+    """Lock the reconciliation. Fails if it doesn't balance."""
+    with Session() as session:
+        rec = session.get(Reconciliation, rec_id)
+        if rec is None:
+            raise click.ClickException(f"Reconciliation {rec_id} not found.")
+        try:
+            bank_rec.finalize(session, rec)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Reconciliation #{rec.id} finalized.")
 
 
 if __name__ == "__main__":

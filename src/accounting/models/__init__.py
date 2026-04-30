@@ -15,6 +15,12 @@ from accounting.models.driver import (
     SettlementStatus,
 )
 from accounting.models.fuel import FuelTransaction
+from accounting.models.bank import (
+    BankMatch,
+    BankStatementLine,
+    Reconciliation,
+    ReconciliationStatus,
+)
 
 __all__ = [
     "Account",
@@ -40,4 +46,8 @@ __all__ = [
     "SettlementLine",
     "SettlementStatus",
     "FuelTransaction",
+    "BankMatch",
+    "BankStatementLine",
+    "Reconciliation",
+    "ReconciliationStatus",
 ]
