@@ -437,3 +437,19 @@ class ApiKeyIssued(ApiKeyOut):
 
 class LoginIn(BaseModel):
     key: str
+
+
+# --- Notifications ------------------------------------------------------
+
+class ARAgingNotifyIn(BaseModel):
+    recipients: List[str]
+    min_days_past_due: int = 0
+    as_of: Optional[date] = None
+
+
+class ARAgingNotifyOut(BaseModel):
+    as_of: date
+    recipients: List[str]
+    bucket_totals: dict
+    grand_total: Decimal
+    invoice_count: int

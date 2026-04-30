@@ -11,6 +11,7 @@ from accounting.api.routers import (
     bills,
     invoices,
     journal,
+    notifications,
     parties,
     payments,
     period_close,
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(journal.router)
     app.include_router(reports.router)
     app.include_router(period_close.router)
+    app.include_router(notifications.router)
 
     @app.get("/healthz", tags=["meta"])
     def healthz() -> dict[str, str]:
