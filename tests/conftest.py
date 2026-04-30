@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,11 +13,11 @@ def session(tmp_path: Path, monkeypatch):
     db_url = f"sqlite:///{db_path}"
     monkeypatch.setenv("ACCOUNTING_DB_URL", db_url)
 
-    # Build a dedicated engine + session bound to this URL. We avoid module-
-    # level state in accounting.db (which captured the URL at import time)
-    # so each test gets a clean database.
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
+    # Rebind the package-level engine so any code path (CLI, API, services)
+    # using accounting.db hits this test's database.
+    from accounting import db
+    db.rebind()
+
     from alembic import command
     from alembic.config import Config
 
@@ -29,11 +27,18 @@ def session(tmp_path: Path, monkeypatch):
     cfg.set_main_option("sqlalchemy.url", db_url)
     command.upgrade(cfg, "head")
 
-    engine = create_engine(db_url, future=True)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    s = SessionLocal()
+    s = db.make_session()
     try:
         yield s
     finally:
         s.close()
-        engine.dispose()
+
+
+@pytest.fixture
+def client(session):
+    """A FastAPI TestClient wired to the same database as the `session`
+    fixture. Tests can call HTTP endpoints and verify state with `session`."""
+    from fastapi.testclient import TestClient
+    from accounting.api.app import create_app
+
+    return TestClient(create_app())

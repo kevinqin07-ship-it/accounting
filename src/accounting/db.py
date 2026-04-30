@@ -23,6 +23,24 @@ _engine = create_engine(_database_url(), future=True)
 _SessionLocal = sessionmaker(bind=_engine, autoflush=False, expire_on_commit=False, future=True)
 
 
+def rebind() -> None:
+    """Rebuild the engine and session factory from the current
+    ACCOUNTING_DB_URL. Use after mutating the environment variable
+    (typically in tests or one-off scripts)."""
+    global _engine, _SessionLocal
+    _engine.dispose()
+    _engine = create_engine(_database_url(), future=True)
+    _SessionLocal = sessionmaker(
+        bind=_engine, autoflush=False, expire_on_commit=False, future=True
+    )
+
+
+def make_session() -> _Session:
+    """Return a new session bound to the current engine. Caller owns its
+    lifecycle; prefer the `Session()` context manager when possible."""
+    return _SessionLocal()
+
+
 def _alembic_config():
     """Build an Alembic Config pointing at this project's alembic.ini.
 

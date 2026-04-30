@@ -67,6 +67,26 @@ The default database is `sqlite:///accounting.db` in the working directory; over
 via `ACCOUNTING_DB_URL`. `accounting init` runs Alembic migrations on whichever URL
 is configured.
 
+## HTTP API
+
+A thin FastAPI layer over the service modules lives in `accounting.api`.
+Auth is intentionally out of scope.
+
+```bash
+accounting init              # migrate + install chart
+accounting-api               # uvicorn on 0.0.0.0:8000
+# or:
+uvicorn accounting.api.app:app --reload
+```
+
+OpenAPI docs at `/docs`. Money on the wire is `Decimal` dollars; cents
+stay internal. Service-layer `ValueError`s map to 400; `LookupError`s
+map to 404, so domain code stays web-framework-free.
+
+Resource groups: `/accounts`, `/customers`, `/vendors`, `/shipments`,
+`/invoices`, `/bills`, `/payments`, `/journal-entries`, `/period-close`,
+`/reports/{trial-balance,income-statement,balance-sheet,ar-aging,ap-aging,shipment-pnl/{no}}`.
+
 ## Migrations
 
 The schema is managed by Alembic. To create a new migration after changing models:
