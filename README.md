@@ -23,8 +23,9 @@ reports plus per-shipment profit and loss.
 ```
 src/accounting/
   chart_of_accounts.py    default logistics CoA
-  db.py                   SQLAlchemy engine + Session context manager
-  models/                 ORM models (accounts, journal, parties, shipment, invoice, bill, payment)
+  db.py                   SQLAlchemy engine, Session context manager, init/reset via Alembic
+  models/                 ORM models (accounts, journal, parties, shipment, invoice, bill,
+                          payment, drivers + settlements, fuel transactions)
   services/
     ledger.py             post journal entries; balances; trial balance
     parties.py            upsert customers and vendors
@@ -32,27 +33,43 @@ src/accounting/
     invoicing.py          create + issue customer invoices
     billing.py            create + approve vendor bills
     payments.py           receive / send payments and clear AR / AP
+    settlements.py        driver pay runs (employees + owner-operators) with deductions
+    fuel_import.py        parse fuel-card CSV; create per-truck rolled-up vendor bill
     reports.py            income statement, balance sheet, AR/AP aging, shipment P&L
   cli.py                  Click-based command line
   seed.py                 demo dataset
-tests/                    pytest suite
+alembic/                  migrations; env.py reads ACCOUNTING_DB_URL
+tests/                    pytest suite (each test gets a freshly migrated SQLite db)
 ```
 
 ## Quick start
 
 ```bash
 pip install -e .[dev]
-accounting init       # create tables and install the chart of accounts
+accounting init       # run migrations and install the chart of accounts
 accounting seed       # load a small demo dataset
 accounting trial-balance
 accounting pnl --start 2026-01-01 --end 2026-12-31
 accounting balance-sheet --as-of 2026-12-31
 accounting ar-aging
 accounting shipment-pnl SHP-1001
+accounting import-fuel PILOT statement.csv --bill-no PILOT-APR --issue-date 2026-04-30
 ```
 
 The default database is `sqlite:///accounting.db` in the working directory; override
-via `ACCOUNTING_DB_URL`.
+via `ACCOUNTING_DB_URL`. `accounting init` runs Alembic migrations on whichever URL
+is configured.
+
+## Migrations
+
+The schema is managed by Alembic. To create a new migration after changing models:
+
+```bash
+alembic revision --autogenerate -m "add fancy new column"
+alembic upgrade head
+```
+
+CI runs `alembic check` to fail PRs that change models without a matching migration.
 
 ## Programmatic use
 

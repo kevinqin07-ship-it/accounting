@@ -1,29 +1,39 @@
-"""Test fixtures: an isolated in-memory SQLite engine for each test."""
+"""Test fixtures: each test gets a freshly migrated SQLite database in tempdir."""
 
 from __future__ import annotations
 
 import os
-
-# Force in-memory SQLite before importing any module that creates the engine.
-os.environ["ACCOUNTING_DB_URL"] = "sqlite:///:memory:"
+import tempfile
+from pathlib import Path
 
 import pytest
-from sqlalchemy.orm import sessionmaker
-
-from accounting import db as db_module
-from accounting.db import Base
 
 
 @pytest.fixture
-def session():
-    Base.metadata.drop_all(db_module._engine)
-    # Importing models registers them on Base.metadata.
-    from accounting import models  # noqa: F401
+def session(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "test.db"
+    db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("ACCOUNTING_DB_URL", db_url)
 
-    Base.metadata.create_all(db_module._engine)
-    SessionLocal = sessionmaker(bind=db_module._engine, autoflush=False, expire_on_commit=False)
+    # Build a dedicated engine + session bound to this URL. We avoid module-
+    # level state in accounting.db (which captured the URL at import time)
+    # so each test gets a clean database.
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from alembic import command
+    from alembic.config import Config
+
+    here = Path(__file__).resolve().parents[1]
+    cfg = Config(str(here / "alembic.ini"))
+    cfg.set_main_option("script_location", str(here / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(db_url, future=True)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     s = SessionLocal()
     try:
         yield s
     finally:
         s.close()
+        engine.dispose()

@@ -7,6 +7,14 @@ from accounting.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from accounting.models.bill import Bill, BillLine, BillStatus
 from accounting.models.payment import Payment, PaymentDirection
 from accounting.models.shipment import Shipment, ShipmentStatus
+from accounting.models.driver import (
+    Driver,
+    DriverType,
+    Settlement,
+    SettlementLine,
+    SettlementStatus,
+)
+from accounting.models.fuel import FuelTransaction
 
 __all__ = [
     "Account",
@@ -26,4 +34,10 @@ __all__ = [
     "PaymentDirection",
     "Shipment",
     "ShipmentStatus",
+    "Driver",
+    "DriverType",
+    "Settlement",
+    "SettlementLine",
+    "SettlementStatus",
+    "FuelTransaction",
 ]

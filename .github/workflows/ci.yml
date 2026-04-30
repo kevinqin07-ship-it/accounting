@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run tests
+        run: pytest
+
+      - name: Verify migrations are up to date
+        # If models drifted from migrations, autogenerate would create new ops;
+        # 'check' exits non-zero in that case.
+        env:
+          ACCOUNTING_DB_URL: sqlite:///ci.db
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
+
+      - name: Smoke-test CLI
+        env:
+          ACCOUNTING_DB_URL: sqlite:///smoke.db
+        run: |
+          accounting init
+          accounting seed
+          accounting trial-balance
+          accounting balance-sheet --as-of 2099-12-31

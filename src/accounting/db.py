@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy import create_engine
@@ -22,20 +23,43 @@ _engine = create_engine(_database_url(), future=True)
 _SessionLocal = sessionmaker(bind=_engine, autoflush=False, expire_on_commit=False, future=True)
 
 
+def _alembic_config():
+    """Build an Alembic Config pointing at this project's alembic.ini.
+
+    Imported lazily so the rest of the package doesn't pay the cost when
+    callers only want a session.
+    """
+    from alembic.config import Config
+
+    here = Path(__file__).resolve().parents[2]
+    cfg = Config(str(here / "alembic.ini"))
+    cfg.set_main_option("script_location", str(here / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", _database_url())
+    return cfg
+
+
 def init_db() -> None:
-    """Create all tables. Safe to call repeatedly."""
-    # Import models so they register with Base.metadata.
+    """Bring the database schema up to head via Alembic. Idempotent."""
+    from alembic import command
+
+    # Importing models registers them on Base.metadata so any code that
+    # introspects metadata after init_db sees the full schema.
     from accounting import models  # noqa: F401
 
-    Base.metadata.create_all(_engine)
+    command.upgrade(_alembic_config(), "head")
 
 
 def reset_db() -> None:
-    """Drop and recreate all tables. Useful for tests and seeding."""
+    """Drop everything and run migrations from scratch. Test/dev use only."""
+    from alembic import command
+
     from accounting import models  # noqa: F401
 
     Base.metadata.drop_all(_engine)
-    Base.metadata.create_all(_engine)
+    # In case the alembic version table survived (it's not in our metadata).
+    with _engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+    command.upgrade(_alembic_config(), "head")
 
 
 @contextmanager

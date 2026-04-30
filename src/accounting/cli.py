@@ -9,8 +9,8 @@ from sqlalchemy import select
 
 from accounting.db import Session, init_db
 from accounting.money import fmt
-from accounting.models import Account, Invoice, Bill, Shipment
-from accounting.services import ledger, reports, shipments as ship_svc
+from accounting.models import Account, Invoice, Bill, Shipment, Vendor
+from accounting.services import fuel_import, ledger, reports, shipments as ship_svc
 from accounting.services.reports import shipment_pnl
 
 
@@ -164,6 +164,35 @@ def shipment_pnl_cmd(shipment_no: str) -> None:
         click.echo(f"  Revenue: {fmt(result.revenue_cents)}")
         click.echo(f"  Cost:    {fmt(result.cost_cents)}")
         click.echo(f"  Margin:  {fmt(result.margin_cents)} ({result.margin_pct * 100:.1f}%)")
+
+
+@cli.command("import-fuel")
+@click.argument("vendor_code")
+@click.argument("csv_path", type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.option("--bill-no", required=True, help="Bill number to create from this statement.")
+@click.option("--issue-date", required=True, help="YYYY-MM-DD")
+def import_fuel_cmd(vendor_code: str, csv_path: str, bill_no: str, issue_date: str) -> None:
+    """Import a fuel-card CSV and create a vendor bill."""
+    with open(csv_path, "r", newline="") as fh:
+        rows = fuel_import.parse_csv(fh.read())
+    issue = _parse_date(issue_date)
+    with Session() as session:
+        vendor = session.scalar(select(Vendor).where(Vendor.code == vendor_code))
+        if vendor is None:
+            raise click.ClickException(f"Vendor {vendor_code} not found.")
+        result = fuel_import.import_statement(
+            session,
+            vendor=vendor,
+            rows=rows,
+            bill_no=bill_no,
+            issue_date=issue,
+        )
+        click.echo(
+            f"Imported {result.inserted} transactions, skipped {result.skipped_duplicates} duplicates."
+        )
+        click.echo(f"Bill {result.bill.bill_no}: {fmt(result.bill.total_cents)}")
+        for truck, count in sorted(result.rows_per_truck.items()):
+            click.echo(f"  {truck}: {count} txns")
 
 
 if __name__ == "__main__":
