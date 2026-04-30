@@ -196,6 +196,190 @@ def test_finalize_refuses_when_bank_lines_unmatched(session):
         bank_rec.finalize(session, rec)
 
 
+def test_post_adjustment_for_bank_fee(session):
+    _bootstrap(session)
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            BankRow(
+                external_id="FEE-1",
+                txn_date=date(2026, 4, 30),
+                amount_cents=-1_500,
+                description="Monthly bank fee",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        statement_start_balance=10_000.00,
+        statement_end_balance=9_985.00,
+    )
+    s_before = bank_rec.summary(session, rec)
+    bank_line = s_before.unmatched_bank_lines[0]
+
+    match = bank_rec.post_adjustment(
+        session,
+        rec,
+        bank_line_id=bank_line.id,
+        offsetting_account_code="6600",
+        memo="April bank fee",
+    )
+
+    # Match links the new cash JE line to the bank line.
+    assert match.bank_statement_line_id == bank_line.id
+    # The bank line is no longer unmatched.
+    s_after = bank_rec.summary(session, rec)
+    assert all(b.id != bank_line.id for b in s_after.unmatched_bank_lines)
+    # Cash decreased by $15 (bootstrap leaves 11420; after fee = 11405)
+    # and bank-fee expense increased by $15.
+    assert ledger.account_balance(session, "1000") == 1_140_500
+    assert ledger.account_balance(session, "6600") == 1_500
+
+
+def test_post_adjustment_for_interest_income(session):
+    _bootstrap(session)
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            BankRow(
+                external_id="INT-1",
+                txn_date=date(2026, 4, 30),
+                amount_cents=750,
+                description="Interest paid",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        statement_start_balance=10_000.00,
+        statement_end_balance=10_007.50,
+    )
+    bank_line = bank_rec.summary(session, rec).unmatched_bank_lines[0]
+
+    bank_rec.post_adjustment(
+        session,
+        rec,
+        bank_line_id=bank_line.id,
+        offsetting_account_code="4900",
+    )
+    # Bootstrap leaves 11420; after $7.50 interest credit = 11427.50.
+    assert ledger.account_balance(session, "1000") == 1_142_750
+    assert ledger.account_balance(session, "4900") == 750
+
+
+def test_post_adjustment_rejects_already_matched(session):
+    _bootstrap(session)
+    bank_rec.import_rows(
+        session, cash_account_code="1000", rows=bank_rec.parse_csv(CSV)
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        statement_start_balance=10_000.00,
+        statement_end_balance=11_920.00,
+    )
+    bank_rec.auto_match(session, rec)
+    # B-1 is now matched. Trying to adjust it should fail.
+    from accounting.models import BankStatementLine
+    from sqlalchemy import select
+
+    bank_line = session.scalar(
+        select(BankStatementLine).where(BankStatementLine.external_id == "B-1")
+    )
+    with pytest.raises(ValueError, match="already matched"):
+        bank_rec.post_adjustment(
+            session,
+            rec,
+            bank_line_id=bank_line.id,
+            offsetting_account_code="6600",
+        )
+
+
+def test_post_adjustment_rejects_self_offset(session):
+    _bootstrap(session)
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            BankRow(
+                external_id="FEE-X",
+                txn_date=date(2026, 4, 30),
+                amount_cents=-100,
+                description="x",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        statement_start_balance=10_000.00,
+        statement_end_balance=9_999.00,
+    )
+    bank_line = bank_rec.summary(session, rec).unmatched_bank_lines[0]
+    with pytest.raises(ValueError, match="cannot be the cash account"):
+        bank_rec.post_adjustment(
+            session,
+            rec,
+            bank_line_id=bank_line.id,
+            offsetting_account_code="1000",
+        )
+
+
+def test_adjustment_lets_finalize_succeed(session):
+    """End-to-end: bank statement has a fee that's nowhere on the books.
+    Posting an adjustment for it should let the period finalize cleanly."""
+    _bootstrap(session)
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=bank_rec.parse_csv(CSV)
+        + [
+            BankRow(
+                external_id="FEE-A",
+                txn_date=date(2026, 4, 30),
+                amount_cents=-1_500,
+                description="Monthly fee",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        statement_start_balance=10_000.00,
+        statement_end_balance=11_905.00,  # 11920 - 15 fee
+    )
+    bank_rec.auto_match(session, rec)
+    fee_line = next(
+        b for b in bank_rec.summary(session, rec).unmatched_bank_lines
+        if b.external_id == "FEE-A"
+    )
+    bank_rec.post_adjustment(
+        session,
+        rec,
+        bank_line_id=fee_line.id,
+        offsetting_account_code="6600",
+        memo="April bank fee",
+    )
+    bank_rec.finalize(session, rec)
+    from accounting.models import ReconciliationStatus
+
+    assert rec.status == ReconciliationStatus.FINALIZED
+
+
 def test_manual_match_validates_amount(session):
     _bootstrap(session)
     bank_rec.import_rows(

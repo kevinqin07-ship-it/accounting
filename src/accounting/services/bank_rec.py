@@ -361,6 +361,78 @@ def match_manually(
     return match
 
 
+def post_adjustment(
+    session: Session,
+    rec: Reconciliation,
+    *,
+    bank_line_id: int,
+    offsetting_account_code: str,
+    memo: Optional[str] = None,
+    entry_date: Optional[date] = None,
+) -> BankMatch:
+    """Post an adjusting journal entry for a bank-only item (fee, interest,
+    NSF, etc.) and immediately match it to the originating bank line.
+
+    The sign of the bank line determines the direction:
+      bank inflow  (+amount): DR cash,             CR offsetting account (e.g. interest income)
+      bank outflow (-amount): DR offsetting acct,  CR cash               (e.g. bank fee)
+    """
+    if rec.status != ReconciliationStatus.OPEN:
+        raise ValueError("Cannot adjust a finalized reconciliation.")
+
+    bank_line = session.get(BankStatementLine, bank_line_id)
+    if bank_line is None:
+        raise LookupError(f"BankStatementLine {bank_line_id} not found.")
+    if bank_line.cash_account_id != rec.cash_account_id:
+        raise ValueError("Bank line is not on this reconciliation's cash account.")
+    if bank_line.match is not None:
+        raise ValueError(f"Bank line {bank_line_id} is already matched.")
+
+    cash_code = rec.cash_account.code
+    # Reject self-postings: the offsetting account must not be the cash
+    # account, otherwise the resulting JE would have both lines on cash.
+    if offsetting_account_code == cash_code:
+        raise ValueError("Offsetting account cannot be the cash account itself.")
+
+    amount = abs(bank_line.amount_cents)
+    if bank_line.amount_cents > 0:
+        # Inflow on the bank → DR cash, CR offsetting account.
+        lines = [
+            ledger.LineSpec(account_code=cash_code, debit_cents=amount, memo=memo),
+            ledger.LineSpec(
+                account_code=offsetting_account_code, credit_cents=amount, memo=memo
+            ),
+        ]
+    else:
+        lines = [
+            ledger.LineSpec(
+                account_code=offsetting_account_code, debit_cents=amount, memo=memo
+            ),
+            ledger.LineSpec(account_code=cash_code, credit_cents=amount, memo=memo),
+        ]
+
+    entry = ledger.post_entry(
+        session,
+        entry_date=entry_date or bank_line.txn_date,
+        memo=memo or f"Bank adjustment for {bank_line.external_id}",
+        reference=f"ADJ:{bank_line.external_id}",
+        lines=lines,
+    )
+    # Find the cash-account line we just created and pair it with the bank line.
+    cash_line = next(
+        line for line in entry.lines if line.account_id == rec.cash_account_id
+    )
+    match = BankMatch(
+        reconciliation_id=rec.id,
+        journal_line_id=cash_line.id,
+        bank_statement_line_id=bank_line.id,
+        note=f"Adjustment: {memo}" if memo else "Bank adjustment",
+    )
+    session.add(match)
+    session.flush()
+    return match
+
+
 def unmatch(session: Session, match_id: int) -> None:
     match = session.get(BankMatch, match_id)
     if match is None:

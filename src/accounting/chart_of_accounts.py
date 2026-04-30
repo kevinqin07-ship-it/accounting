@@ -53,6 +53,7 @@ DEFAULT_CHART: List[AccountSpec] = [
     AccountSpec("4010", "Fuel Surcharge Revenue", AccountType.REVENUE, "Fuel surcharges billed to customers."),
     AccountSpec("4020", "Accessorial Revenue", AccountType.REVENUE, "Detention, layover, lumper, etc."),
     AccountSpec("4100", "Brokerage Revenue", AccountType.REVENUE, "Margin on brokered loads."),
+    AccountSpec("4900", "Interest Income", AccountType.REVENUE, "Bank account interest."),
 
     # --- Direct cost of services ---
     AccountSpec("5000", "Driver Wages", AccountType.EXPENSE, "Company-driver wages and per-diem."),

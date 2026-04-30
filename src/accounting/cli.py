@@ -281,6 +281,40 @@ def bank_rec_status_cmd(rec_id: int) -> None:
             f"  Unmatched bank lines: {len(s.unmatched_bank_lines)}, "
             f"unmatched book lines: {len(s.unmatched_book_lines)}"
         )
+        if s.unmatched_bank_lines:
+            click.echo("\nUnmatched bank lines:")
+            for line in s.unmatched_bank_lines:
+                click.echo(
+                    f"  id={line.id} {line.external_id} {line.txn_date} "
+                    f"{fmt(line.amount_cents):>12} {line.description or ''}"
+                )
+
+
+@bank_rec_group.command("adjust")
+@click.argument("rec_id", type=int)
+@click.argument("bank_line_id", type=int)
+@click.argument("offsetting_account_code")
+@click.option("--memo", default=None)
+def bank_rec_adjust_cmd(
+    rec_id: int, bank_line_id: int, offsetting_account_code: str, memo: str | None
+) -> None:
+    """Post an adjusting JE for a bank-only item (fee, interest, NSF, ...)
+    and match it to the originating bank line."""
+    with Session() as session:
+        rec = session.get(Reconciliation, rec_id)
+        if rec is None:
+            raise click.ClickException(f"Reconciliation {rec_id} not found.")
+        try:
+            match = bank_rec.post_adjustment(
+                session,
+                rec,
+                bank_line_id=bank_line_id,
+                offsetting_account_code=offsetting_account_code,
+                memo=memo,
+            )
+        except (ValueError, LookupError) as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Posted adjustment match #{match.id}.")
 
 
 @bank_rec_group.command("finalize")
