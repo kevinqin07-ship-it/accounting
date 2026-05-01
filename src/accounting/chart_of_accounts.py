@@ -51,7 +51,12 @@ DEFAULT_CHART: List[AccountSpec] = [
     # --- Revenue ---
     AccountSpec("4000", "Freight Revenue", AccountType.REVENUE, "Line-haul revenue from shipments."),
     AccountSpec("4010", "Fuel Surcharge Revenue", AccountType.REVENUE, "Fuel surcharges billed to customers."),
-    AccountSpec("4020", "Accessorial Revenue", AccountType.REVENUE, "Detention, layover, lumper, etc."),
+    AccountSpec("4020", "Accessorial Revenue", AccountType.REVENUE, "Generic accessorials (lumper, etc.)."),
+    AccountSpec("4030", "Detention Revenue", AccountType.REVENUE, "Detention, layover, and wait time billed to the customer."),
+    AccountSpec("4040", "Demurrage & Per Diem Revenue", AccountType.REVENUE, "Container demurrage, per diem, rail/yard storage billed to the customer."),
+    AccountSpec("4050", "Chassis Revenue", AccountType.REVENUE, "Chassis split, flip, and rental rebilled to the customer."),
+    AccountSpec("4060", "Port Pass-Through Revenue", AccountType.REVENUE, "TMF, pier pass, and other port fees rebilled to the customer."),
+    AccountSpec("4070", "Drayage Accessorial Revenue", AccountType.REVENUE, "Pre-pull, drop, dry run, TONU, hazmat, reefer, residential, weekend/after-hours, scale, stop-off, etc."),
     AccountSpec("4100", "Brokerage Revenue", AccountType.REVENUE, "Margin on brokered loads."),
     AccountSpec("4900", "Interest Income", AccountType.REVENUE, "Bank account interest."),
 
@@ -61,6 +66,10 @@ DEFAULT_CHART: List[AccountSpec] = [
     AccountSpec("5020", "Purchased Transportation", AccountType.EXPENSE, "Carrier pay on brokered loads."),
     AccountSpec("5100", "Fuel", AccountType.EXPENSE, "Diesel and DEF."),
     AccountSpec("5200", "Tolls", AccountType.EXPENSE, "Tolls and weigh-station fees."),
+    AccountSpec("5210", "Port & Pier Pass Fees", AccountType.EXPENSE, "TMF, pier pass, and other port fees we pay."),
+    AccountSpec("5220", "Chassis Rental", AccountType.EXPENSE, "Chassis pool / steamship-line chassis usage."),
+    AccountSpec("5230", "Container Per Diem & Demurrage", AccountType.EXPENSE, "Per diem and demurrage we owe the steamship line / port."),
+    AccountSpec("5260", "Drayage Accessorial Costs", AccountType.EXPENSE, "Pre-pull, drop, bobtail/deadhead, repositioning, scale, and other drayage-specific costs."),
     AccountSpec("5300", "Vehicle Maintenance & Repairs", AccountType.EXPENSE),
     AccountSpec("5400", "Tires", AccountType.EXPENSE),
     AccountSpec("5500", "Cargo & Auto Insurance", AccountType.EXPENSE),
@@ -88,7 +97,17 @@ class Codes:
     ACCOUNTS_RECEIVABLE = "1100"
     ACCOUNTS_PAYABLE = "2000"
     FREIGHT_REVENUE = "4000"
+    FUEL_SURCHARGE_REVENUE = "4010"
+    DETENTION_REVENUE = "4030"
+    DEMURRAGE_PER_DIEM_REVENUE = "4040"
+    CHASSIS_REVENUE = "4050"
+    PORT_PASSTHROUGH_REVENUE = "4060"
+    DRAYAGE_ACCESSORIAL_REVENUE = "4070"
     FUEL = "5100"
     TOLLS = "5200"
+    PORT_FEES = "5210"
+    CHASSIS_RENTAL = "5220"
+    CONTAINER_PER_DIEM_DEMURRAGE = "5230"
+    DRAYAGE_ACCESSORIAL_COSTS = "5260"
     MAINTENANCE = "5300"
     PURCHASED_TRANSPORTATION = "5020"
