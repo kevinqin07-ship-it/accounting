@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "composio": {
+      "command": "npx",
+      "args": ["-y", "@composio/mcp@latest", "start"],
+      "env": {
+        "COMPOSIO_API_KEY": "${user_config.composio_api_key}"
+      }
+    }
+  }
+}
