@@ -89,3 +89,19 @@ class AccountingClient:
 
     def receive_payment(self, **fields) -> dict:
         return self._ok(self.http.post("/payments/receive", json=fields))
+
+    # --- journal entries -----------------------------------------------
+
+    def list_journal_entries(self, *, limit: int = 200) -> List[dict]:
+        return self._ok(self.http.get(f"/journal-entries?limit={limit}"))
+
+    def find_journal_by_reference(
+        self, reference: str, *, limit: int = 500
+    ) -> Optional[dict]:
+        for entry in self.list_journal_entries(limit=limit):
+            if entry.get("reference") == reference:
+                return entry
+        return None
+
+    def post_journal_entry(self, **fields) -> dict:
+        return self._ok(self.http.post("/journal-entries", json=fields))

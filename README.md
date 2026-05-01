@@ -125,6 +125,16 @@ operational source of truth. Idempotent across runs:
   the drivers flow is opt-in (run with `--flows drivers` if you want to
   populate `/drivers`).
 
+  Per-period driver pay still has to land in the books, even though
+  individual settlements stay in Airtable. `accounting airtable
+  sync-settlements --period-start ... --period-end ...` sums Move Log
+  Driver Pay over the date range and posts a single journal entry:
+  DR 5000 Driver Wages (or 5010 for owner-ops, via `--expense-account`),
+  CR 1000 Operating Cash. To use the accrual model (recognize the
+  liability now, disburse later through bank rec), pass
+  `--cash-account 2100`. Idempotent across runs via a deterministic
+  reference (`SETTLE-AGG:{start}..{end}`).
+
 Run via the CLI:
 
 ```bash

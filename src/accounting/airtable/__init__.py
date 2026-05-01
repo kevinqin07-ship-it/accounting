@@ -6,11 +6,12 @@ source of truth.
 """
 
 from accounting.airtable.config import DEFAULT_DRAYAGE_CONFIG, DrayageSyncConfig
-from accounting.airtable.sync import SyncReport, run_sync
+from accounting.airtable.sync import SyncReport, run_sync, sync_settlements_aggregate
 
 __all__ = [
     "DEFAULT_DRAYAGE_CONFIG",
     "DrayageSyncConfig",
     "SyncReport",
     "run_sync",
+    "sync_settlements_aggregate",
 ]

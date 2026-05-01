@@ -29,12 +29,17 @@ class DrayageSyncConfig:
     customer_master_table_id: str = "tbleCYkqo8BD3ZBR4"
     revenue_tracker_table_id: str = "tblcUcTcF6b5BWOxU"
     driver_roster_table_id: str = "tblUFz8bS9PLF0OOp"
+    move_log_table_id: str = "tblEWKV8eHfIQ7cnm"
 
     # --- Customer Master fields ------------------------------------------
     cm_name_field: str = "fldKX9rz9iRcGXKpu"          # Customer
     cm_email_field: str = "fldBn0xUdGY3gyIM5"         # Email
     cm_phone_field: str = "fldffNXJyfo25P6jP"         # Phone
     cm_billing_contact_field: str = "fldgcDSUaJEnhdC02"  # Billing Contact
+
+    # --- Move Log fields (driver pay aggregate) -------------------------
+    ml_actual_date_field: str = "fldLevSpO4XNdJF1g"   # Actual Date
+    ml_driver_pay_field: str = "fldoBmjAm45iS7REd"    # Driver Pay ($)
 
     # --- Driver Roster fields --------------------------------------------
     dr_name_field: str = "fld15rcXPP5drV56b"          # Driver Name

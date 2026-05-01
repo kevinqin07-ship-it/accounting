@@ -372,6 +372,106 @@ def sync_revenue_tracker(
     return rep
 
 
+def sync_settlements_aggregate(
+    airtable: AirtableClient,
+    accounting: AccountingClient,
+    config: DrayageSyncConfig,
+    *,
+    period_start: date,
+    period_end: date,
+    expense_account_code: str = "5000",
+    cash_account_code: str = "1000",
+    dry_run: bool = True,
+) -> FlowReport:
+    """Sum Move Log driver pay over [period_start, period_end] (inclusive)
+    and post a single journal entry: DR expense_account, CR cash_account.
+
+    Idempotency: the JE is written with a deterministic reference
+    (`SETTLE-AGG:{start}..{end}`); if a JE with that reference already
+    exists, the run skips.
+
+    Default credits Operating Cash directly. To use the accrual model
+    (recognize liability now, disburse later through bank rec), pass
+    `cash_account_code="2100"` (Driver Wages Payable) and post a separate
+    cash disbursement when payment goes out."""
+    rep = FlowReport(flow="settlements_aggregate")
+    reference = f"SETTLE-AGG:{period_start.isoformat()}..{period_end.isoformat()}"
+
+    if not dry_run:
+        if accounting.find_journal_by_reference(reference) is not None:
+            rep.skipped_existing = 1
+            return rep
+
+    records = airtable.list_records(
+        config.move_log_table_id,
+        fields=[config.ml_actual_date_field, config.ml_driver_pay_field],
+    )
+
+    total = Decimal("0")
+    matched = 0
+    for record in records:
+        raw_date = _cell(record, config.ml_actual_date_field)
+        if not raw_date:
+            continue
+        # Airtable returns "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS.sssZ"; we
+        # only care about the date.
+        if isinstance(raw_date, list):
+            raw_date = raw_date[0] if raw_date else None
+        if not raw_date:
+            continue
+        try:
+            d = date.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            continue
+        if not (period_start <= d <= period_end):
+            continue
+        pay = _scalar_number(_cell(record, config.ml_driver_pay_field))
+        if pay <= 0:
+            continue
+        total += pay
+        matched += 1
+
+    if total <= 0:
+        rep.errors.append(
+            f"No matched legs with positive Driver Pay between "
+            f"{period_start} and {period_end}."
+        )
+        return rep
+
+    memo = (
+        f"Driver pay aggregate {period_start}..{period_end} "
+        f"({matched} legs, ${total:.2f})"
+    )
+
+    if dry_run:
+        log.info("[dry-run] would post JE: %s ref=%s", memo, reference)
+        rep.inserted = 1
+        return rep
+
+    try:
+        accounting.post_journal_entry(
+            entry_date=period_end.isoformat(),
+            memo=memo,
+            reference=reference,
+            lines=[
+                {
+                    "account_code": expense_account_code,
+                    "debit": str(total),
+                    "memo": "Driver pay (aggregate from Airtable Move Log)",
+                },
+                {
+                    "account_code": cash_account_code,
+                    "credit": str(total),
+                    "memo": memo,
+                },
+            ],
+        )
+        rep.inserted = 1
+    except Exception as e:
+        rep.errors.append(f"posting JE: {e}")
+    return rep
+
+
 def run_sync(
     airtable: AirtableClient,
     accounting: AccountingClient,

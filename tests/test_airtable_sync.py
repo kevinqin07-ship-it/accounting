@@ -3,7 +3,13 @@ accounting API (via TestClient)."""
 
 from __future__ import annotations
 
-from accounting.airtable import DrayageSyncConfig, run_sync
+from datetime import date
+
+from accounting.airtable import (
+    DrayageSyncConfig,
+    run_sync,
+    sync_settlements_aggregate,
+)
 from accounting.airtable.accounting import AccountingClient
 from accounting.airtable.airtable import FakeAirtableClient
 
@@ -223,6 +229,167 @@ def test_sync_subset_flows_only(client):
     assert client.get("/customers").json()
     assert client.get("/drivers").json() == []
     assert client.get("/invoices").json() == []
+
+
+def _seed_move_log() -> FakeAirtableClient:
+    """Three legs: two inside the period (April 1-15), one outside."""
+    air = FakeAirtableClient()
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML0001",
+        {
+            CFG.ml_actual_date_field: "2026-04-03",
+            CFG.ml_driver_pay_field: 250.00,
+        },
+    )
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML0002",
+        {
+            CFG.ml_actual_date_field: "2026-04-12T08:30:00.000Z",  # datetime form
+            CFG.ml_driver_pay_field: 175.50,
+        },
+    )
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML0003",  # outside period
+        {
+            CFG.ml_actual_date_field: "2026-04-20",
+            CFG.ml_driver_pay_field: 300.00,
+        },
+    )
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML0004",  # zero pay, ignored
+        {
+            CFG.ml_actual_date_field: "2026-04-08",
+            CFG.ml_driver_pay_field: 0,
+        },
+    )
+    return air
+
+
+def test_settlements_aggregate_posts_one_je(client):
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    rep = sync_settlements_aggregate(
+        air,
+        acct,
+        CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        dry_run=False,
+    )
+    assert rep.errors == []
+    assert rep.inserted == 1
+
+    # One JE posted with the right reference and total.
+    entries = client.get("/journal-entries").json()
+    settle_entries = [
+        e for e in entries if e.get("reference", "").startswith("SETTLE-AGG:")
+    ]
+    assert len(settle_entries) == 1
+    je = settle_entries[0]
+    # 250 + 175.50 = 425.50
+    debit_line = next(line for line in je["lines"] if line["account_code"] == "5000")
+    credit_line = next(line for line in je["lines"] if line["account_code"] == "1000")
+    assert debit_line["debit"] == "425.50"
+    assert credit_line["credit"] == "425.50"
+
+    # Cash decreased; driver wages expense recognized.
+    bs = client.get("/reports/balance-sheet?as_of=2099-12-31").json()
+    cash = next((line for line in bs["assets"] if line["code"] == "1000"), None)
+    assert cash["amount"] == "-425.50"
+
+
+def test_settlements_aggregate_idempotent(client):
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        dry_run=False,
+    )
+    # Second run skips.
+    rep = sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        dry_run=False,
+    )
+    assert rep.inserted == 0
+    assert rep.skipped_existing == 1
+
+
+def test_settlements_aggregate_dry_run_no_post(client):
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    rep = sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        dry_run=True,
+    )
+    assert rep.inserted == 1
+    assert rep.errors == []
+    # But nothing was actually posted.
+    entries = client.get("/journal-entries").json()
+    assert not any(e.get("reference", "").startswith("SETTLE-AGG:") for e in entries)
+
+
+def test_settlements_aggregate_accrual_model_uses_2100(client):
+    """Pass cash_account='2100' to defer disbursement to bank rec."""
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        cash_account_code="2100",
+        dry_run=False,
+    )
+    # Liability increased; cash untouched.
+    bs = client.get("/reports/balance-sheet?as_of=2099-12-31").json()
+    payable = next((l for l in bs["liabilities"] if l["code"] == "2100"), None)
+    assert payable["amount"] == "425.50"
+    cash = next((l for l in bs["assets"] if l["code"] == "1000"), None)
+    assert cash is None  # zero-balance accounts excluded
+
+
+def test_settlements_aggregate_owner_op_account(client):
+    """Caller can route to 5010 Owner-Operator Settlements instead of 5000."""
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 15),
+        expense_account_code="5010",
+        dry_run=False,
+    )
+    pnl = client.get("/reports/income-statement?start=2026-01-01&end=2026-12-31").json()
+    expense = next(line for line in pnl["expense"] if line["code"] == "5010")
+    assert expense["amount"] == "425.50"
+
+
+def test_settlements_aggregate_empty_period_reports_error(client):
+    client.post("/accounts/install-default-chart")
+    air = _seed_move_log()
+    acct = AccountingClient(http=client)
+    rep = sync_settlements_aggregate(
+        air, acct, CFG,
+        period_start=date(2026, 5, 1),  # outside the seeded data
+        period_end=date(2026, 5, 31),
+        dry_run=False,
+    )
+    assert rep.inserted == 0
+    assert rep.errors and "No matched legs" in rep.errors[0]
 
 
 def test_unauthenticated_accounting_client_fails_clearly(unauthed_client):

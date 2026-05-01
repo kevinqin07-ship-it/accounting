@@ -557,6 +557,66 @@ def airtable_sync_cmd(base_url, api_key, airtable_key, base_id, flows, dry_run):
         raise click.ClickException(f"{report.total_errors} error(s); see log above.")
 
 
+@airtable_group.command("sync-settlements")
+@click.option("--base-url", default="http://127.0.0.1:8000")
+@click.option("--api-key", envvar="ACCOUNTING_API_KEY", required=True)
+@click.option("--airtable-key", envvar="AIRTABLE_API_KEY", required=True)
+@click.option("--base-id", default=None)
+@click.option("--period-start", required=True, help="YYYY-MM-DD")
+@click.option("--period-end", required=True, help="YYYY-MM-DD")
+@click.option(
+    "--expense-account",
+    default="5000",
+    help="Driver wages account (5000 employees, 5010 owner-ops, etc.).",
+)
+@click.option(
+    "--cash-account",
+    default="1000",
+    help="Account to credit. Use 2100 for the accrual model (Driver Wages Payable).",
+)
+@click.option("--dry-run/--commit", default=True)
+def airtable_sync_settlements_cmd(
+    base_url,
+    api_key,
+    airtable_key,
+    base_id,
+    period_start,
+    period_end,
+    expense_account,
+    cash_account,
+    dry_run,
+):
+    """Aggregate Airtable Move Log driver pay into a single periodic JE."""
+    from accounting.airtable import DrayageSyncConfig, sync_settlements_aggregate
+    from accounting.airtable.accounting import AccountingClient
+    from accounting.airtable.airtable import HttpxAirtableClient
+
+    cfg = DrayageSyncConfig()
+    if base_id:
+        cfg.base_id = base_id
+    air = HttpxAirtableClient(base_id=cfg.base_id, api_key=airtable_key)
+    acct = AccountingClient.for_url(base_url, api_key)
+    rep = sync_settlements_aggregate(
+        air,
+        acct,
+        cfg,
+        period_start=_parse_date(period_start),
+        period_end=_parse_date(period_end),
+        expense_account_code=expense_account,
+        cash_account_code=cash_account,
+        dry_run=dry_run,
+    )
+    click.echo(
+        f"settlements_aggregate {'(dry-run)' if dry_run else '(committed)'}: "
+        f"inserted={rep.inserted} skipped_existing={rep.skipped_existing} "
+        f"errors={len(rep.errors)}"
+    )
+    for err in rep.errors:
+        click.echo(f"  ! {err}")
+    if rep.errors:
+        raise click.ClickException("Errors during sync.")
+
+
 @cli.group("auth")
 def auth_group() -> None:
     """API key management. CLI runs locally and bypasses HTTP auth."""
