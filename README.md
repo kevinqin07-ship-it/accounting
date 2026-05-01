@@ -158,11 +158,25 @@ For a self-hosted setup, equivalent cron line on the accounting host
 0 6 * * 1  /usr/local/bin/accounting airtable sync-settlements-weekly --commit
 ```
 
-Pair this with bank reconciliation: at week-end the JE accrues a
-liability against 2100 Driver Wages Payable; when the actual ACH
-disbursement clears, post a DR 2100 / CR 1000 entry (or use the bank
-rec adjustment endpoint) so 2100 returns to zero and the bank line is
-matched.
+Pair this with bank reconciliation to close the loop:
+
+1. Weekly accrual sync posts `DR 5000, CR 2100`. Liability sits in 2100
+   Driver Wages Payable.
+2. ACH actually clears a few days later. Import the bank statement:
+   `accounting import-bank 1000 statement.csv`.
+3. Open a reconciliation: `accounting bank-rec open ...`.
+4. Bulk-clear the disbursements: `accounting bank-rec
+   settle-disbursements <rec_id>`. Scans unmatched outflows whose
+   description contains `PAYROLL`, `DRIVER PAY`, `ACH SETTLE`, or
+   `SETTLEMENT` (configurable via `--patterns`); for each, posts a
+   `DR 2100, CR 1000` adjustment and matches the bank line to the new
+   cash JE line in one shot. After this 2100 is back to zero.
+5. `accounting bank-rec auto-match <rec_id>` for the remaining lines,
+   then `accounting bank-rec finalize <rec_id>`.
+
+The same `settle-disbursements` flow handles other accruals — pass
+`--account 2000 --patterns "CARRIER PAY"` for purchased-transportation
+disbursements, or any other pattern + account combo.
 
 Run via the CLI:
 

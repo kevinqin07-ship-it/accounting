@@ -380,6 +380,189 @@ def test_adjustment_lets_finalize_succeed(session):
     assert rec.status == ReconciliationStatus.FINALIZED
 
 
+def test_settle_disbursements_clears_payable_against_bank_outflow(session):
+    """End-to-end: weekly accrual + bank disbursement match closes the
+    loop. After both, 2100 returns to zero and the bank line is matched."""
+    ledger.install_chart(session)
+    # Opening cash so the reconciliation has a sensible start balance.
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 4, 30),
+        memo="Opening",
+        lines=[
+            LineSpec("1000", debit_cents=10_000_00),
+            LineSpec("3000", credit_cents=10_000_00),
+        ],
+    )
+    # Weekly accrual JE: DR 5000, CR 2100 for $1,500.
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 5, 3),
+        memo="Driver pay aggregate",
+        reference="SETTLE-AGG:2026-04-27..2026-05-03",
+        lines=[
+            LineSpec("5000", debit_cents=1_500_00),
+            LineSpec("2100", credit_cents=1_500_00),
+        ],
+    )
+    assert ledger.account_balance(session, "2100") == 150_000
+
+    # Bank statement: one ACH PAYROLL withdrawal for $1,500.
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            bank_rec.BankRow(
+                external_id="ACH-PR-99",
+                txn_date=date(2026, 5, 5),
+                amount_cents=-1_500_00,
+                description="ACH PAYROLL DRIVER PAY week 18",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 5, 1),
+        period_end=date(2026, 5, 31),
+        statement_start_balance=10_000.00,
+        statement_end_balance=8_500.00,
+    )
+
+    matches = bank_rec.settle_disbursements(session, rec)
+    assert len(matches) == 1
+
+    # Payable cleared, cash decreased.
+    assert ledger.account_balance(session, "2100") == 0
+    assert ledger.account_balance(session, "1000") == 850_000
+
+    # Bank line is matched; reconciliation balances.
+    s = bank_rec.summary(session, rec)
+    assert s.unmatched_bank_lines == []
+    assert s.is_balanced
+
+    bank_rec.finalize(session, rec)
+
+
+def test_settle_disbursements_skips_non_matching_lines(session):
+    ledger.install_chart(session)
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 4, 30),
+        memo="Opening",
+        lines=[
+            LineSpec("1000", debit_cents=10_000_00),
+            LineSpec("3000", credit_cents=10_000_00),
+        ],
+    )
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            bank_rec.BankRow(
+                external_id="UTIL-1",
+                txn_date=date(2026, 5, 4),
+                amount_cents=-100_00,
+                description="ELECTRIC COMPANY MONTHLY",
+            ),
+            bank_rec.BankRow(
+                external_id="DEP-1",
+                txn_date=date(2026, 5, 5),
+                amount_cents=500_00,
+                description="ACH PAYROLL deposit refund",  # inflow despite pattern
+            ),
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 5, 1),
+        period_end=date(2026, 5, 31),
+        statement_start_balance=10_000.00,
+        statement_end_balance=10_400.00,
+    )
+    matches = bank_rec.settle_disbursements(session, rec)
+    assert matches == []
+    s = bank_rec.summary(session, rec)
+    assert len(s.unmatched_bank_lines) == 2  # both untouched
+
+
+def test_settle_disbursements_custom_patterns_and_account(session):
+    """The same flow can clear other accruals (e.g. carrier pay)."""
+    ledger.install_chart(session)
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 4, 30),
+        memo="Opening",
+        lines=[
+            LineSpec("1000", debit_cents=10_000_00),
+            LineSpec("3000", credit_cents=10_000_00),
+        ],
+    )
+    # Pretend an AP balance exists.
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 5, 3),
+        memo="Carrier accrual",
+        lines=[
+            LineSpec("5020", debit_cents=2_000_00),
+            LineSpec("2000", credit_cents=2_000_00),
+        ],
+    )
+    bank_rec.import_rows(
+        session,
+        cash_account_code="1000",
+        rows=[
+            bank_rec.BankRow(
+                external_id="ACH-CARRIER",
+                txn_date=date(2026, 5, 7),
+                amount_cents=-2_000_00,
+                description="WIRE CARRIER PAY swift",
+            )
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 5, 1),
+        period_end=date(2026, 5, 31),
+        statement_start_balance=10_000.00,
+        statement_end_balance=8_000.00,
+    )
+    matches = bank_rec.settle_disbursements(
+        session,
+        rec,
+        payable_account_code="2000",
+        description_patterns=["CARRIER PAY"],
+    )
+    assert len(matches) == 1
+    assert ledger.account_balance(session, "2000") == 0
+
+
+def test_settle_disbursements_refuses_after_finalize(session):
+    ledger.install_chart(session)
+    ledger.post_entry(
+        session,
+        entry_date=date(2026, 4, 30),
+        memo="Opening",
+        lines=[
+            LineSpec("1000", debit_cents=10_000_00),
+            LineSpec("3000", credit_cents=10_000_00),
+        ],
+    )
+    rec = bank_rec.open_period(
+        session,
+        cash_account_code="1000",
+        period_start=date(2026, 5, 1),
+        period_end=date(2026, 5, 31),
+        statement_start_balance=10_000.00,
+        statement_end_balance=10_000.00,
+    )
+    bank_rec.finalize(session, rec)
+    with pytest.raises(ValueError, match="finalized"):
+        bank_rec.settle_disbursements(session, rec)
+
+
 def test_manual_match_validates_amount(session):
     _bootstrap(session)
     bank_rec.import_rows(

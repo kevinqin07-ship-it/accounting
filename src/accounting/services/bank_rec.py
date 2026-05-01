@@ -433,6 +433,62 @@ def post_adjustment(
     return match
 
 
+def settle_disbursements(
+    session: Session,
+    rec: Reconciliation,
+    *,
+    payable_account_code: str = "2100",
+    description_patterns: Sequence[str] = (
+        "PAYROLL",
+        "DRIVER PAY",
+        "ACH SETTLE",
+        "SETTLEMENT",
+    ),
+    case_sensitive: bool = False,
+    memo_prefix: str = "Driver pay disbursement",
+) -> List[BankMatch]:
+    """Bulk-clear unmatched bank outflows against an accrual liability
+    account (typically 2100 Driver Wages Payable).
+
+    For each unmatched bank line in the period whose amount is negative
+    (outflow) and whose description contains any of the patterns, post a
+    DR payable_account / CR cash adjustment via post_adjustment, which
+    also matches the new cash JE line to the bank line in one shot.
+
+    Defaults are tuned for driver-pay disbursements paired with the
+    weekly aggregate-accrual sync. Pass different patterns and
+    `payable_account_code` to use the same flow for other accruals
+    (e.g. carrier pay, factoring fees) once those land in their own
+    payable accounts."""
+    if rec.status != ReconciliationStatus.OPEN:
+        raise ValueError("Cannot settle disbursements on a finalized reconciliation.")
+
+    s = summary(session, rec)
+    matches: List[BankMatch] = []
+    for bank_line in s.unmatched_bank_lines:
+        if bank_line.amount_cents >= 0:
+            continue  # only outflows
+        haystack = bank_line.description or ""
+        if not case_sensitive:
+            haystack_cmp = haystack.upper()
+            patterns_cmp = [p.upper() for p in description_patterns]
+        else:
+            haystack_cmp = haystack
+            patterns_cmp = list(description_patterns)
+        if not any(p in haystack_cmp for p in patterns_cmp):
+            continue
+
+        match = post_adjustment(
+            session,
+            rec,
+            bank_line_id=bank_line.id,
+            offsetting_account_code=payable_account_code,
+            memo=f"{memo_prefix} - {bank_line.external_id}",
+        )
+        matches.append(match)
+    return matches
+
+
 def unmatch(session: Session, match_id: int) -> None:
     match = session.get(BankMatch, match_id)
     if match is None:

@@ -324,6 +324,43 @@ def bank_rec_adjust_cmd(
         click.echo(f"Posted adjustment match #{match.id}.")
 
 
+@bank_rec_group.command("settle-disbursements")
+@click.argument("rec_id", type=int)
+@click.option(
+    "--account",
+    "payable_account_code",
+    default="2100",
+    help="Liability account being cleared (default 2100 Driver Wages Payable).",
+)
+@click.option(
+    "--patterns",
+    default="PAYROLL,DRIVER PAY,ACH SETTLE,SETTLEMENT",
+    help="Comma-separated description substrings to match.",
+)
+@click.option("--case-sensitive/--ignore-case", default=False)
+def bank_rec_settle_disbursements_cmd(rec_id, payable_account_code, patterns, case_sensitive):
+    """Bulk-clear unmatched bank outflows whose description matches one of
+    the patterns. Posts DR <account> / CR cash and pairs each new cash
+    JE line with the bank line in one shot. Designed for driver-pay
+    disbursements paired with the weekly accrual sync."""
+    pats = [p.strip() for p in patterns.split(",") if p.strip()]
+    with Session() as session:
+        rec = session.get(Reconciliation, rec_id)
+        if rec is None:
+            raise click.ClickException(f"Reconciliation {rec_id} not found.")
+        try:
+            matches = bank_rec.settle_disbursements(
+                session,
+                rec,
+                payable_account_code=payable_account_code,
+                description_patterns=pats,
+                case_sensitive=case_sensitive,
+            )
+        except (ValueError, LookupError) as e:
+            raise click.ClickException(str(e))
+    click.echo(f"Cleared {len(matches)} bank line(s) against {payable_account_code}.")
+
+
 @bank_rec_group.command("finalize")
 @click.argument("rec_id", type=int)
 def bank_rec_finalize_cmd(rec_id: int) -> None:
