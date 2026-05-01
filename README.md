@@ -126,14 +126,43 @@ operational source of truth. Idempotent across runs:
   populate `/drivers`).
 
   Per-period driver pay still has to land in the books, even though
-  individual settlements stay in Airtable. `accounting airtable
-  sync-settlements --period-start ... --period-end ...` sums Move Log
-  Driver Pay over the date range and posts a single journal entry:
-  DR 5000 Driver Wages (or 5010 for owner-ops, via `--expense-account`),
-  CR 1000 Operating Cash. To use the accrual model (recognize the
-  liability now, disburse later through bank rec), pass
-  `--cash-account 2100`. Idempotent across runs via a deterministic
-  reference (`SETTLE-AGG:{start}..{end}`).
+  individual settlements stay in Airtable. Two CLI commands:
+
+  - `accounting airtable sync-settlements --period-start ... --period-end ...`
+    sums Move Log Driver Pay over the explicit range and posts one JE:
+    DR 5000 Driver Wages, CR 1000 Operating Cash by default. Override
+    with `--expense-account 5010` for owner-ops or `--cash-account 2100`
+    for the accrual model.
+
+  - `accounting airtable sync-settlements-weekly` is the same thing
+    wrapped for cron: it picks the last fully-completed week, defaults
+    to the accrual model (CR 2100 Driver Wages Payable), and is a
+    no-op on re-runs (the JE reference is `SETTLE-AGG:{start}..{end}`).
+    Adjust `--week-ends-on` (0=Mon..6=Sun, default Sun) to match your
+    pay period.
+
+#### Weekly schedule
+
+The repo includes `.github/workflows/sync-settlements-weekly.yml` that
+runs every Monday at 06:00 UTC and supports manual `workflow_dispatch`.
+You'll need three repository configurations:
+
+- secret `ACCOUNTING_API_KEY` — admin-role accounting key
+- secret `AIRTABLE_API_KEY` — Airtable PAT with read access to the base
+- variable `ACCOUNTING_BASE_URL` — public URL of the accounting API
+
+For a self-hosted setup, equivalent cron line on the accounting host
+(after `pip install -e .` and exporting the same env vars):
+
+```
+0 6 * * 1  /usr/local/bin/accounting airtable sync-settlements-weekly --commit
+```
+
+Pair this with bank reconciliation: at week-end the JE accrues a
+liability against 2100 Driver Wages Payable; when the actual ACH
+disbursement clears, post a DR 2100 / CR 1000 entry (or use the bank
+rec adjustment endpoint) so 2100 returns to zero and the bank line is
+matched.
 
 Run via the CLI:
 

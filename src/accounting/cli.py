@@ -617,6 +617,71 @@ def airtable_sync_settlements_cmd(
         raise click.ClickException("Errors during sync.")
 
 
+@airtable_group.command("sync-settlements-weekly")
+@click.option("--base-url", default="http://127.0.0.1:8000")
+@click.option("--api-key", envvar="ACCOUNTING_API_KEY", required=True)
+@click.option("--airtable-key", envvar="AIRTABLE_API_KEY", required=True)
+@click.option("--base-id", default=None)
+@click.option(
+    "--week-ends-on",
+    type=click.IntRange(0, 6),
+    default=6,
+    help="Day-of-week the pay week ends on. 0=Mon, ..., 6=Sun. Default 6.",
+)
+@click.option(
+    "--expense-account",
+    default="5000",
+    help="5000 employees, 5010 owner-ops, etc.",
+)
+@click.option(
+    "--cash-account",
+    default="2100",
+    help="Default 2100 Driver Wages Payable (accrual). Use 1000 for direct cash.",
+)
+@click.option("--dry-run/--commit", default=True)
+def airtable_sync_settlements_weekly_cmd(
+    base_url, api_key, airtable_key, base_id,
+    week_ends_on, expense_account, cash_account, dry_run,
+):
+    """Aggregate last full week's Move Log driver pay into one JE.
+
+    Designed for cron: pick a day-of-week and time after week_ends_on
+    (e.g. Monday 6am if week_ends_on=6). Re-runs of the same week are
+    no-ops thanks to the deterministic JE reference."""
+    from accounting.airtable import (
+        DrayageSyncConfig,
+        last_full_week,
+        sync_settlements_last_week,
+    )
+    from accounting.airtable.accounting import AccountingClient
+    from accounting.airtable.airtable import HttpxAirtableClient
+
+    cfg = DrayageSyncConfig()
+    if base_id:
+        cfg.base_id = base_id
+    air = HttpxAirtableClient(base_id=cfg.base_id, api_key=airtable_key)
+    acct = AccountingClient.for_url(base_url, api_key)
+
+    start, end = last_full_week(__import__("datetime").date.today(), week_ends_on=week_ends_on)
+    rep = sync_settlements_last_week(
+        air, acct, cfg,
+        week_ends_on=week_ends_on,
+        expense_account_code=expense_account,
+        cash_account_code=cash_account,
+        dry_run=dry_run,
+    )
+    mode = "(dry-run)" if dry_run else "(committed)"
+    click.echo(
+        f"weekly settlements for {start}..{end} {mode}: "
+        f"inserted={rep.inserted} skipped={rep.skipped_existing} "
+        f"errors={len(rep.errors)}"
+    )
+    for err in rep.errors:
+        click.echo(f"  ! {err}", err=True)
+    if rep.errors:
+        raise click.ClickException("Errors during sync.")
+
+
 @cli.group("auth")
 def auth_group() -> None:
     """API key management. CLI runs locally and bypasses HTTP auth."""

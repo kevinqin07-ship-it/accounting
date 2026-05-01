@@ -7,8 +7,10 @@ from datetime import date
 
 from accounting.airtable import (
     DrayageSyncConfig,
+    last_full_week,
     run_sync,
     sync_settlements_aggregate,
+    sync_settlements_last_week,
 )
 from accounting.airtable.accounting import AccountingClient
 from accounting.airtable.airtable import FakeAirtableClient
@@ -390,6 +392,90 @@ def test_settlements_aggregate_empty_period_reports_error(client):
     )
     assert rep.inserted == 0
     assert rep.errors and "No matched legs" in rep.errors[0]
+
+
+def test_last_full_week_midweek_returns_prior_mon_sun():
+    # Wed 2026-05-06 -> Mon 2026-04-27 .. Sun 2026-05-03
+    start, end = last_full_week(date(2026, 5, 6))  # week_ends_on=6 (Sun)
+    assert start == date(2026, 4, 27)
+    assert end == date(2026, 5, 3)
+    assert (end - start).days == 6
+
+
+def test_last_full_week_on_end_day_returns_prior_week():
+    # Sun 2026-05-03 IS the end-day; we still want the PRIOR week.
+    start, end = last_full_week(date(2026, 5, 3))
+    assert start == date(2026, 4, 20)
+    assert end == date(2026, 4, 26)
+
+
+def test_last_full_week_day_after_end_returns_just_completed_week():
+    # Mon 2026-05-04 -> the week that just ended (Apr 27 .. May 3).
+    start, end = last_full_week(date(2026, 5, 4))
+    assert start == date(2026, 4, 27)
+    assert end == date(2026, 5, 3)
+
+
+def test_last_full_week_with_saturday_end():
+    # Saturday-ending pay week (week_ends_on=5).
+    start, end = last_full_week(date(2026, 5, 6), week_ends_on=5)  # Wed
+    assert start == date(2026, 4, 26)  # Sun
+    assert end == date(2026, 5, 2)     # Sat
+
+
+def test_sync_settlements_last_week_uses_accrual_by_default(client):
+    """Default cash_account is 2100 (Driver Wages Payable), not cash."""
+    client.post("/accounts/install-default-chart")
+
+    air = FakeAirtableClient()
+    # Two legs in the last full Mon-Sun before today=2026-05-06.
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML-W1",
+        {CFG.ml_actual_date_field: "2026-04-28", CFG.ml_driver_pay_field: 200.00},
+    )
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML-W2",
+        {CFG.ml_actual_date_field: "2026-05-02", CFG.ml_driver_pay_field: 150.00},
+    )
+    # One leg outside that week.
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML-OUT",
+        {CFG.ml_actual_date_field: "2026-05-04", CFG.ml_driver_pay_field: 999.00},
+    )
+    acct = AccountingClient(http=client)
+    rep = sync_settlements_last_week(
+        air, acct, CFG, today=date(2026, 5, 6), dry_run=False
+    )
+    assert rep.errors == []
+    assert rep.inserted == 1
+
+    # Liability went up by $350; cash unchanged.
+    bs = client.get("/reports/balance-sheet?as_of=2099-12-31").json()
+    payable = next((l for l in bs["liabilities"] if l["code"] == "2100"), None)
+    assert payable["amount"] == "350.00"
+    cash = next((l for l in bs["assets"] if l["code"] == "1000"), None)
+    assert cash is None  # zero balance not displayed
+
+
+def test_sync_settlements_last_week_idempotent_across_runs(client):
+    client.post("/accounts/install-default-chart")
+    air = FakeAirtableClient()
+    air.add_record(
+        CFG.move_log_table_id,
+        "recML-W3",
+        {CFG.ml_actual_date_field: "2026-04-29", CFG.ml_driver_pay_field: 100.00},
+    )
+    acct = AccountingClient(http=client)
+    sync_settlements_last_week(air, acct, CFG, today=date(2026, 5, 6), dry_run=False)
+    # Second run on the same "today" -> no-op.
+    rep = sync_settlements_last_week(
+        air, acct, CFG, today=date(2026, 5, 6), dry_run=False
+    )
+    assert rep.skipped_existing == 1
+    assert rep.inserted == 0
 
 
 def test_unauthenticated_accounting_client_fails_clearly(unauthed_client):

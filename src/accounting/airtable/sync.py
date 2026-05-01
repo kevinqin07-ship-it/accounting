@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Sequence
 
@@ -370,6 +370,55 @@ def sync_revenue_tracker(
             rep.errors.append(f"{record_id}: {e}")
 
     return rep
+
+
+def last_full_week(today: date, *, week_ends_on: int = 6) -> tuple[date, date]:
+    """Return (period_start, period_end) for the most recent fully-ended
+    7-day week relative to `today`.
+
+    `week_ends_on` follows Python's weekday() convention: 0=Monday,
+    1=Tuesday, ..., 6=Sunday (the default). If today IS the end-of-week
+    day, we still return the PRIOR week — we don't process a week until
+    it's fully behind us, otherwise late-arriving Move Log entries
+    would be missed."""
+    if not 0 <= week_ends_on <= 6:
+        raise ValueError("week_ends_on must be 0..6 (Monday=0, Sunday=6)")
+    days_since_end = (today.weekday() - week_ends_on) % 7
+    if days_since_end == 0:
+        days_since_end = 7
+    period_end = today - timedelta(days=days_since_end)
+    period_start = period_end - timedelta(days=6)
+    return period_start, period_end
+
+
+def sync_settlements_last_week(
+    airtable: AirtableClient,
+    accounting: AccountingClient,
+    config: DrayageSyncConfig,
+    *,
+    today: Optional[date] = None,
+    week_ends_on: int = 6,
+    expense_account_code: str = "5000",
+    cash_account_code: str = "2100",
+    dry_run: bool = True,
+) -> FlowReport:
+    """Aggregate last full week's Move Log driver pay into one JE.
+    Defaults to the accrual model (CR 2100 Driver Wages Payable) since
+    that's the right shape when the disbursement happens after the
+    accrual on a fixed schedule."""
+    period_start, period_end = last_full_week(
+        today or date.today(), week_ends_on=week_ends_on
+    )
+    return sync_settlements_aggregate(
+        airtable,
+        accounting,
+        config,
+        period_start=period_start,
+        period_end=period_end,
+        expense_account_code=expense_account_code,
+        cash_account_code=cash_account_code,
+        dry_run=dry_run,
+    )
 
 
 def sync_settlements_aggregate(
