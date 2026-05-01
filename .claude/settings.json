@@ -1,0 +1,12 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "backend.composio.dev",
+        "api.composio.dev",
+        "api.anthropic.com"
+      ]
+    }
+  }
+}
