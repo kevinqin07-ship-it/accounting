@@ -10,6 +10,7 @@ from accounting.api.routers import (
     auth,
     bills,
     dashboard,
+    drivers,
     invoices,
     journal,
     notifications,
@@ -17,6 +18,7 @@ from accounting.api.routers import (
     payments,
     period_close,
     reports,
+    settlements,
     shipments,
 )
 
@@ -49,6 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(invoices.router)
     app.include_router(bills.router)
     app.include_router(payments.router)
+    app.include_router(drivers.router)
+    app.include_router(settlements.router)
     app.include_router(journal.router)
     app.include_router(reports.router)
     app.include_router(period_close.router)

@@ -453,3 +453,116 @@ class ARAgingNotifyOut(BaseModel):
     bucket_totals: dict
     grand_total: Decimal
     invoice_count: int
+
+
+# --- Drivers ------------------------------------------------------------
+
+class DriverCreate(BaseModel):
+    code: str
+    name: str
+    driver_type: str  # "employee" | "owner_operator"
+    cents_per_mile: Optional[int] = None
+    truck_no: Optional[str] = None
+
+
+class DriverOut(BaseModel):
+    id: int
+    code: str
+    name: str
+    driver_type: str
+    cents_per_mile: Optional[int] = None
+    truck_no: Optional[str] = None
+    is_active: bool
+
+    @classmethod
+    def from_model(cls, d) -> "DriverOut":
+        return cls(
+            id=d.id,
+            code=d.code,
+            name=d.name,
+            driver_type=d.driver_type.value,
+            cents_per_mile=d.cents_per_mile,
+            truck_no=d.truck_no,
+            is_active=d.is_active,
+        )
+
+
+# --- Settlements --------------------------------------------------------
+
+class EarningLineIn(BaseModel):
+    description: str
+    amount: Decimal
+    expense_account_code: Optional[str] = None  # defaults from driver type
+    shipment_id: Optional[int] = None
+
+
+class DeductionLineIn(BaseModel):
+    description: str
+    amount: Decimal
+    recovery_account_code: str
+
+
+class SettlementCreate(BaseModel):
+    settlement_no: str
+    driver_id: int
+    period_start: date
+    period_end: date
+    issue_date: date
+    earnings: List[EarningLineIn]
+    deductions: List[DeductionLineIn] = Field(default_factory=list)
+
+
+class SettlementLineOut(BaseModel):
+    id: int
+    kind: str
+    description: str
+    expense_account_code: str
+    amount: Decimal
+    shipment_id: Optional[int] = None
+
+
+class SettlementOut(BaseModel):
+    id: int
+    settlement_no: str
+    driver_id: int
+    period_start: date
+    period_end: date
+    issue_date: date
+    status: str
+    gross: Decimal
+    deductions_total: Decimal
+    net: Decimal
+    lines: List[SettlementLineOut]
+
+    @classmethod
+    def from_model(cls, s) -> "SettlementOut":
+        return cls(
+            id=s.id,
+            settlement_no=s.settlement_no,
+            driver_id=s.driver_id,
+            period_start=s.period_start,
+            period_end=s.period_end,
+            issue_date=s.issue_date,
+            status=s.status.value,
+            gross=_dollars(s.gross_cents),
+            deductions_total=_dollars(s.deductions_cents),
+            net=_dollars(s.net_cents),
+            lines=[
+                SettlementLineOut(
+                    id=line.id,
+                    kind=line.kind,
+                    description=line.description,
+                    expense_account_code=line.expense_account.code,
+                    amount=_dollars(line.amount_cents),
+                    shipment_id=line.shipment_id,
+                )
+                for line in s.lines
+            ],
+        )
+
+
+class SettlementPayIn(BaseModel):
+    payment_date: date
+    cash_account_code: str = "1000"
+    method: str = "ach"
+    reference: Optional[str] = None
