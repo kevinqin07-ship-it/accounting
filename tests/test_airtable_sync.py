@@ -91,21 +91,21 @@ def _seed_airtable() -> FakeAirtableClient:
     return air
 
 
-def test_dry_run_makes_no_api_calls(client):
-    """Dry-run should report what would happen without posting anything."""
+def test_dry_run_default_flows_skip_drivers(client):
+    """Default flows are customers + revenue_tracker; drivers stays opt-in."""
     client.post("/accounts/install-default-chart")
     air = _seed_airtable()
     acct = AccountingClient(http=client)
     report = run_sync(air, acct, CFG, dry_run=True)
-    # All flows reported.
-    assert {f.flow for f in report.flows} == {"customers", "drivers", "revenue_tracker"}
-    # No customers / invoices were actually created.
+    assert {f.flow for f in report.flows} == {"customers", "revenue_tracker"}
+    # No actual writes.
     assert client.get("/customers").json() == []
     assert client.get("/invoices").json() == []
     assert client.get("/drivers").json() == []
 
 
-def test_full_sync_creates_customers_drivers_invoices_payments(client):
+def test_full_default_sync_creates_customers_invoices_payments(client):
+    """Default sync (no drivers) hits customers + revenue_tracker only."""
     client.post("/accounts/install-default-chart")
     air = _seed_airtable()
     acct = AccountingClient(http=client)
@@ -118,8 +118,8 @@ def test_full_sync_creates_customers_drivers_invoices_payments(client):
         "AT-recO8hbuJrEaPBHoG",
     }
 
-    drivers = client.get("/drivers").json()
-    assert any(d["code"] == "AT-recDRV0001" for d in drivers)
+    # Drivers were NOT touched by the default sync.
+    assert client.get("/drivers").json() == []
 
     invoices = client.get("/invoices").json()
     invoice_nos = {inv["invoice_no"] for inv in invoices}
@@ -129,13 +129,22 @@ def test_full_sync_creates_customers_drivers_invoices_payments(client):
     rt1 = next(inv for inv in invoices if inv["invoice_no"] == "RT-recRT00001")
     assert rt1["status"] == "open"  # issued, not yet paid
     assert rt1["total"] == "4925.00"  # 4500 + 250 + 175
-    # Three lines on three different revenue accounts (4000, 4010, 4030).
     accounts_hit = {line["revenue_account_code"] for line in rt1["lines"]}
     assert accounts_hit == {"4000", "4010", "4030"}
 
     rt3 = next(inv for inv in invoices if inv["invoice_no"] == "RT-recRT00003")
     assert rt3["status"] == "paid"
     assert rt3["total"] == "2200.00"
+
+
+def test_drivers_flow_runs_when_explicitly_requested(client):
+    """Opt-in still works for users who DO want drivers in accounting."""
+    client.post("/accounts/install-default-chart")
+    air = _seed_airtable()
+    acct = AccountingClient(http=client)
+    run_sync(air, acct, CFG, dry_run=False, flows=["drivers"])
+    drivers = client.get("/drivers").json()
+    assert any(d["code"] == "AT-recDRV0001" for d in drivers)
 
 
 def test_second_run_is_idempotent(client):

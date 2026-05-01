@@ -522,8 +522,11 @@ def airtable_group() -> None:
 )
 @click.option(
     "--flows",
-    default="customers,drivers,revenue_tracker",
-    help="Comma-separated flows to run.",
+    default="customers,revenue_tracker",
+    help=(
+        "Comma-separated flows to run. Default omits 'drivers' since "
+        "settlements live in Airtable, not in the accounting books."
+    ),
 )
 @click.option(
     "--dry-run/--commit",

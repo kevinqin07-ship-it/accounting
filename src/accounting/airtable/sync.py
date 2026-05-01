@@ -380,10 +380,14 @@ def run_sync(
     dry_run: bool = True,
     flows: Optional[Sequence[str]] = None,
 ) -> SyncReport:
-    """Run all flows in order: customers -> drivers -> revenue tracker.
-    Each flow's failures don't block the next flow."""
+    """Run sync flows in order. Each flow's failures don't block the next.
+
+    Default flows are customers + revenue_tracker. The drivers flow stays
+    available behind an explicit opt-in (`flows=["drivers"]`) but isn't
+    run by default — driver settlements live in Airtable, not in the
+    accounting books, by design."""
     cfg = config or DrayageSyncConfig()
-    requested = set(flows or ["customers", "drivers", "revenue_tracker"])
+    requested = set(flows or ["customers", "revenue_tracker"])
     report = SyncReport()
 
     if "customers" in requested:

@@ -114,13 +114,16 @@ Command Center) into the accounting API. One-way; Airtable stays the
 operational source of truth. Idempotent across runs:
 
   - Customer Master rows -> POST /customers (upsert by `AT-{recordId}`).
-  - Driver Roster rows   -> POST /drivers (upsert).
   - Revenue Tracker rows where `Billing Status = Billed` -> POST
     /shipments + /invoices + /invoices/{id}/issue, with each currency
     column mapped to the appropriate revenue account. Re-runs skip rows
     where the invoice already exists.
   - Revenue Tracker rows where `Payment Status = Paid` also POST
     /payments/receive for the Collected Amount.
+
+  Driver settlements live in Airtable, not in the accounting books, so
+  the drivers flow is opt-in (run with `--flows drivers` if you want to
+  populate `/drivers`).
 
 Run via the CLI:
 
