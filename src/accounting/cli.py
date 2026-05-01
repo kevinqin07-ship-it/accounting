@@ -494,6 +494,66 @@ def notify_ar_aging_cmd(recipients: tuple[str, ...], min_days: int, as_of: str |
     )
 
 
+@cli.group("airtable")
+def airtable_group() -> None:
+    """Sync from an Airtable base into the accounting API."""
+
+
+@airtable_group.command("sync")
+@click.option(
+    "--base-url", default="http://127.0.0.1:8000", help="Accounting API base URL."
+)
+@click.option(
+    "--api-key",
+    envvar="ACCOUNTING_API_KEY",
+    required=True,
+    help="Admin API key (env: ACCOUNTING_API_KEY).",
+)
+@click.option(
+    "--airtable-key",
+    envvar="AIRTABLE_API_KEY",
+    required=True,
+    help="Airtable PAT (env: AIRTABLE_API_KEY).",
+)
+@click.option(
+    "--base-id",
+    default=None,
+    help="Override the Airtable base id. Defaults to the Drayage Command Center base.",
+)
+@click.option(
+    "--flows",
+    default="customers,drivers,revenue_tracker",
+    help="Comma-separated flows to run.",
+)
+@click.option(
+    "--dry-run/--commit",
+    default=True,
+    help="Dry-run prints what would happen without posting. Default: dry-run.",
+)
+def airtable_sync_cmd(base_url, api_key, airtable_key, base_id, flows, dry_run):
+    """Run the Airtable -> accounting sync."""
+    from accounting.airtable import DrayageSyncConfig, run_sync
+    from accounting.airtable.accounting import AccountingClient
+    from accounting.airtable.airtable import HttpxAirtableClient
+
+    cfg = DrayageSyncConfig()
+    if base_id:
+        cfg.base_id = base_id
+    air = HttpxAirtableClient(base_id=cfg.base_id, api_key=airtable_key)
+    acct = AccountingClient.for_url(base_url, api_key)
+    report = run_sync(
+        air,
+        acct,
+        cfg,
+        dry_run=dry_run,
+        flows=[f.strip() for f in flows.split(",") if f.strip()],
+    )
+    click.echo(f"Sync {'(dry-run)' if dry_run else '(committed)'}:")
+    click.echo(report.summary())
+    if report.total_errors:
+        raise click.ClickException(f"{report.total_errors} error(s); see log above.")
+
+
 @cli.group("auth")
 def auth_group() -> None:
     """API key management. CLI runs locally and bypasses HTTP auth."""

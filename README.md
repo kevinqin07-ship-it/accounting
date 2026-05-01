@@ -107,12 +107,42 @@ the configured recipients. SMTP config via `SMTP_HOST`, `SMTP_PORT`,
 available via CLI: `accounting notify ar-aging --to ops@example.com
 --min-days 1`.
 
+### Airtable sync
+
+`accounting.airtable` syncs from an Airtable base (default: the Drayage
+Command Center) into the accounting API. One-way; Airtable stays the
+operational source of truth. Idempotent across runs:
+
+  - Customer Master rows -> POST /customers (upsert by `AT-{recordId}`).
+  - Driver Roster rows   -> POST /drivers (upsert).
+  - Revenue Tracker rows where `Billing Status = Billed` -> POST
+    /shipments + /invoices + /invoices/{id}/issue, with each currency
+    column mapped to the appropriate revenue account. Re-runs skip rows
+    where the invoice already exists.
+  - Revenue Tracker rows where `Payment Status = Paid` also POST
+    /payments/receive for the Collected Amount.
+
+Run via the CLI:
+
+```bash
+export AIRTABLE_API_KEY=patXXXX
+export ACCOUNTING_API_KEY=adminKey  # admin-role accounting key
+accounting airtable sync --dry-run                 # preview
+accounting airtable sync --commit                  # actually post
+accounting airtable sync --commit --flows customers,revenue_tracker
+```
+
+Per-row errors are reported but don't abort the batch. The
+AirtableClient is a thin Protocol with an httpx-backed production
+implementation and a FakeAirtableClient for tests, so sync flows are
+verifiable end-to-end without hitting the Airtable API.
+
 ### Resource groups
 
 `/accounts`, `/customers`, `/vendors`, `/shipments`, `/invoices`,
-`/bills`, `/payments`, `/journal-entries`, `/period-close`,
-`/notifications/ar-aging`, `/auth/{login,logout,keys}`, `/dashboard`,
-`/login`, `/logout`,
+`/bills`, `/payments`, `/drivers`, `/settlements`, `/journal-entries`,
+`/period-close`, `/notifications/ar-aging`,
+`/auth/{login,logout,keys}`, `/dashboard`, `/login`, `/logout`,
 `/reports/{trial-balance,income-statement,balance-sheet,ar-aging,ap-aging,shipment-pnl/{no}}`.
 
 ## Migrations
