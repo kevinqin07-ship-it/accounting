@@ -1,0 +1,25 @@
+{
+  "name": "accounting",
+  "version": "1.0.0",
+  "description": "A double-entry accounting module tailored for a freight / logistics business. It models the chart of accounts, journal entries, customers (shippers), vendors (fuel, maintenance, carriers), shipments, invoices, vendor bills, payments, and produces standard financial reports plus per-shipment profit and loss.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:34939/git/kevinqin07-ship-it/accounting"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.73",
+    "@composio/core": "^0.8.1",
+    "@composio/vercel": "^0.8.1",
+    "ai": "^6.0.172"
+  }
+}
