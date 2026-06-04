@@ -1,8 +1,9 @@
-# BRUIN_SHARED_MEMORY
+# Session log — 2026-06-04: CC automation reconciliation
 
-Persistent context for the Bruin Command Center (Drayage CC) Airtable
-automation work. Append new dated entries when something is settled that
-future sessions shouldn't re-derive. Keep entries short.
+Repo-side mirror of the session entry written to the **BRUIN_SHARED_MEMORY**
+Airtable base (`appnWadNnaP6vi66M`, `Session Logs` table `tblUvwMUwalBx0Txa`,
+record `recu9H7hrUqTmHE3z`). Authoritative copy is the Airtable record;
+this file exists for in-repo discoverability of the loop diagnosis.
 
 ---
 
